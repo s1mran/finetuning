@@ -1,37 +1,26 @@
 """
-sft_then_cpt.py
-===============
+cpt_fin_then_sft.py
+===================
 
-The *reversed* ordering of `cpt_then_sft.py`, run as a controlled experiment:
+Two-stage domain adaptation of a small base LLM:
 
-    base model  ->  Stage 1: SFT  ->  merge  ->  Stage 2: CPT  ->  merge  ->  final
+    base model  ->  Stage 1: CPT  ->  merge  ->  Stage 2: SFT  ->  merge  ->  final
 
-Stage 1 (SFT / supervised fine-tuning)
-    Alpaca-formatted (instruction, input, output) pairs on top of the *raw*
-    base model. Loss masked to the response span only. LoRA rank 16 on the
-    linear layers. The model learns the instruction format before it has any
-    idea what the domain vocabulary means, so it is fitting a template with
-    tokens it barely represents.
-
-Stage 2 (CPT / continued pre-training)
-    Plain next-token prediction on raw financial prose. Loss on *every* token.
-    LoRA rank 32 targeting all linear layers **plus** embed_tokens and lm_head.
+Stage 1 (CPT / continued pre-training)
+    Plain next-token prediction on raw financial prose pulled from SEC 10-K
+    filings. Loss on *every* token. LoRA rank 32 targeting all linear layers
+    **plus** embed_tokens and lm_head, because the model is learning new
+    domain vocabulary ("EBITDA", "diluted EPS", "subordinated debentures").
     A slice of general text is mixed in to fight catastrophic forgetting.
 
-Why run this at all
--------------------
-This is the ordering people reach for intuitively ("teach it to answer, then
-teach it the domain") and it is the one that degrades. All-token loss on raw
-prose has no reason to preserve the response-only behaviour learned in stage 1:
-the CPT gradient pushes every position toward continuing a 10-K, including the
-positions right after `### Response:`. The expected outcome is domain
-perplexity that looks just as good as the CPT-first run, paired with alpaca
-probes that ramble past the answer and never emit EOS -- i.e. the instruction
-following gets partially overwritten.
+Stage 2 (SFT / supervised fine-tuning)
+    Alpaca-formatted (instruction, input, output) pairs. Loss masked to the
+    response span only. LoRA rank 16 on the linear layers only -- the
+    vocabulary is already fine, only behaviour needs to change.
 
-Run this against `cpt_then_sft.py` with the same seed and step counts and
-diff the two `report.json` files. The perplexity columns should be comparable;
-the probe outputs should not be.
+This is the ordering that actually works: CPT teaches the model to *sound*
+like the domain, SFT then teaches it to *answer*. Running SFT last means the
+instruction-following behaviour is the freshest thing in the weights.
 
 Requirements
 ------------
@@ -42,14 +31,14 @@ not support Apple MPS.
 
 Usage
 -----
-    python sft_then_cpt.py                     # full run, ~15 min on a T4
-    python sft_then_cpt.py --smoke             # 30 steps per stage, sanity check
-    python sft_then_cpt.py --sft-steps 400 --cpt-steps 400
+    python cpt_fin_then_sft.py                     # full run, ~15 min on a T4
+    python cpt_fin_then_sft.py --smoke             # 30 steps per stage, sanity check
+    python cpt_fin_then_sft.py --cpt-steps 400 --sft-steps 400
 
     # publish to huggingface.co/sidhusarkar (needs `huggingface-cli login` or
     # HF_TOKEN with write scope)
-    python sft_then_cpt.py --push-to-hub
-    python sft_then_cpt.py --push-to-hub other-user/other-repo --push-adapters
+    python cpt_fin_then_sft.py --push-to-hub
+    python cpt_fin_then_sft.py --push-to-hub other-user/other-repo --push-adapters
 """
 
 from __future__ import annotations
@@ -94,12 +83,13 @@ GENERAL_SOURCES = [
 SFT_SOURCE = ("virattt/financial-qa-10K", None, "train")
 
 HF_USER = "sidhusarkar"                     # default Hub owner
-RUN_NAME = "smollm-135m-fin-sft-then-cpt"   # default Hub repo name
+RUN_NAME = "smollm-135m-fin-cpt-then-sft"   # default Hub repo name
 
-OUT = Path("runs/sft_then_cpt")
-SFT_ADAPTER = OUT / "01_sft_adapter"
-SFT_MERGED = OUT / "02_sft_merged"
-CPT_ADAPTER = OUT / "03_cpt_adapter"
+_HERE = Path(__file__).resolve().parent
+OUT = _HERE.parent / "reports" / "cpt_fin_then_sft"   # <repo>/CPT/reports/...
+CPT_ADAPTER = OUT / "01_cpt_adapter"
+CPT_MERGED = OUT / "02_cpt_merged"
+SFT_ADAPTER = OUT / "03_sft_adapter"
 FINAL_MERGED = OUT / "04_final_merged"
 
 # Alpaca templates. The trailing EOS on the training side is what teaches the
@@ -209,20 +199,20 @@ the **{report['order']}** order.
 
 | stage | objective | LoRA | trained modules |
 |---|---|---|---|
-| 1 — SFT | response-only loss on Alpaca-formatted 10-K QA | r=16 | attention + MLP |
-| 2 — CPT | all-token loss on raw 10-K prose (+20% general replay) | r=32 | attention + MLP + `embed_tokens` + `lm_head` |
+| 1 — CPT | all-token loss on raw 10-K prose (+20% general replay) | r=32 | attention + MLP + `embed_tokens` + `lm_head` |
+| 2 — SFT | response-only loss on Alpaca-formatted 10-K QA | r=16 | attention + MLP |
 
 ## Results
 
-| metric | base | after SFT | after CPT |
+| metric | base | after CPT | after SFT |
 |---|---|---|---|
-| domain perplexity | {ppl('ppl_before', 'domain'):.2f} | {ppl('ppl_after_sft', 'domain'):.2f} | {ppl('ppl_after_cpt', 'domain'):.2f} |
-| general perplexity | {ppl('ppl_before', 'general'):.2f} | {ppl('ppl_after_sft', 'general'):.2f} | {ppl('ppl_after_cpt', 'general'):.2f} |
+| domain perplexity | {ppl('ppl_before', 'domain'):.2f} | {ppl('ppl_after_cpt', 'domain'):.2f} | {ppl('ppl_after_sft', 'domain'):.2f} |
+| general perplexity | {ppl('ppl_before', 'general'):.2f} | {ppl('ppl_after_cpt', 'general'):.2f} | {ppl('ppl_after_sft', 'general'):.2f} |
 
-This ordering is the **ablation**, not the recommended recipe: running CPT last
-partially overwrites the instruction-following behaviour learned in stage 1,
-because all-token loss on raw prose never rewards "answer, then stop". See the
-companion `CPT -> SFT` run for the ordering that holds up.
+CPT first teaches the model to *sound* like the domain; SFT last leaves the
+instruction-following behaviour as the freshest thing in the weights. The
+companion `SFT -> CPT` run is the ablation showing what the reversed ordering
+costs.
 
 ## Usage
 
@@ -241,7 +231,7 @@ ids = tokenizer(prompt, return_tensors="pt").to(model.device)
 print(tokenizer.decode(model.generate(**ids, max_new_tokens=90)[0]))
 ```
 
-Trained with [Unsloth](https://github.com/unslothai/unsloth) — `sft_then_cpt.py`.
+Trained with [Unsloth](https://github.com/unslothai/unsloth) — `cpt_fin_then_sft.py`.
 """
 
 
@@ -285,6 +275,27 @@ def push_card(repo: str, text: str, token: str | None) -> None:
 # ----------------------------------------------------------------------------
 # Data: CPT corpus
 # ----------------------------------------------------------------------------
+
+def show_examples(label: str, texts: list[str], n: int = 2, width: int = 700) -> None:
+    """Print real training strings, exactly as the trainer will see them.
+
+    Silent data bugs -- a renamed text column, an empty context, a template
+    whose response marker never renders -- are invisible in a loss curve and
+    obvious the moment you look at the strings. `<eos>` should be visible at
+    the end of every one; that trailing token is what teaches the model to
+    stop.
+    """
+    if not texts:
+        print(f"\n[{label}] EMPTY -- nothing will be trained from this split")
+        return
+    print(f"\n[{label}] {len(texts)} examples, showing {min(n, len(texts))}:")
+    for i, text in enumerate(texts[:n]):
+        body = text[:width] + (" ...[truncated]" if len(text) > width else "")
+        print("  " + "-" * 68)
+        print(f"  #{i}  ({len(text)} chars)")
+        print("  | " + body.replace("\n", "\n  | "))
+    print("  " + "-" * 68)
+
 
 def chunk_words(text: str, size: int = 256, overlap: float = 0.2) -> list[str]:
     """Word-level chunking with overlap so no sentence is cut out of context."""
@@ -358,11 +369,15 @@ def build_cpt_dataset(eos: str, n_docs: int, general_ratio: float):
     general = load_general_chunks(n_general + 100)
     general_eval, general_train = general[:100], general[100:]
 
-    mixed = [t + eos for t in domain_train + general_train]
+    domain_texts = [t + eos for t in domain_train]
+    general_texts = [t + eos for t in general_train]
+    mixed = domain_texts + general_texts
     random.Random(SEED).shuffle(mixed)
 
     print(f"[cpt-data] train={len(mixed)} "
           f"(domain={len(domain_train)}, general={len(general_train)})")
+    show_examples("cpt-data / domain", domain_texts, 2)
+    show_examples("cpt-data / general replay", general_texts, 1)
     return (
         Dataset.from_dict({"text": mixed}),
         Dataset.from_dict({"text": [t + eos for t in domain_eval[:200]]}),
@@ -404,6 +419,12 @@ def build_sft_dataset(eos: str, n_rows: int, format_mix: float):
     rng.shuffle(texts)
     split_at = max(1, int(len(texts) * 0.95))
     print(f"[sft-data] train={split_at}  eval={len(texts) - split_at}")
+    # Two examples, because format_mix means the rendering differs row to row:
+    # one should carry an ### Input block and one should not.
+    with_input = [t for t in texts[:split_at] if "### Input:" in t]
+    without_input = [t for t in texts[:split_at] if "### Input:" not in t]
+    show_examples("sft-data / with ### Input", with_input, 1)
+    show_examples("sft-data / no ### Input", without_input, 1)
     return (
         Dataset.from_dict({"text": texts[:split_at]}),
         Dataset.from_dict({"text": texts[split_at:]}),
@@ -598,33 +619,6 @@ def generate(model, tokenizer, prompt: str, max_new_tokens: int = 90) -> str:
                             skip_special_tokens=True).strip()
 
 
-@torch.no_grad()
-def eos_rate(model, tokenizer, max_new_tokens: int = 120) -> float:
-    """Fraction of alpaca probes that actually terminate with EOS.
-
-    This is the number that degrades in this ordering. CPT's all-token loss
-    never sees `### Response:` followed by a short answer and a stop, so the
-    model drifts back toward "continue the document forever".
-    """
-    FastLanguageModel.for_inference(model)
-    stopped = 0
-    for q in INSTRUCTION_PROBES:
-        prompt = ALPACA_NO_INPUT.format(instruction=q, output="")
-        ids = tokenizer(prompt, return_tensors="pt").to(model.device)
-        out = model.generate(
-            **ids,
-            max_new_tokens=max_new_tokens,
-            do_sample=False,
-            temperature=None,
-            top_p=None,
-            pad_token_id=tokenizer.pad_token_id,
-            eos_token_id=tokenizer.eos_token_id,
-        )
-        new = out[0][ids["input_ids"].shape[1]:]
-        stopped += int(tokenizer.eos_token_id in new.tolist())
-    return stopped / len(INSTRUCTION_PROBES)
-
-
 def probe(model, tokenizer, label: str) -> dict:
     banner(f"PROBES -- {label}")
     result = {}
@@ -653,10 +647,6 @@ def probe(model, tokenizer, label: str) -> dict:
     result[f"general::{GENERAL_PROBE}"] = text
     print(f"  {GENERAL_PROBE!r}\n    -> {text}")
 
-    rate = eos_rate(model, tokenizer)
-    result["eos_rate"] = rate
-    print(f"\n-- alpaca probes terminating with EOS: {rate:.0%}")
-
     return result
 
 
@@ -665,10 +655,10 @@ def probe(model, tokenizer, label: str) -> dict:
 # ----------------------------------------------------------------------------
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="SFT then CPT (the reversed order)")
+    ap = argparse.ArgumentParser(description="CPT then SFT")
     ap.add_argument("--base", default=BASE_MODEL)
-    ap.add_argument("--sft-steps", type=int, default=300)
     ap.add_argument("--cpt-steps", type=int, default=300)
+    ap.add_argument("--sft-steps", type=int, default=300)
     ap.add_argument("--cpt-docs", type=int, default=1500)
     ap.add_argument("--sft-rows", type=int, default=5000)
     ap.add_argument("--general-ratio", type=float, default=0.20,
@@ -700,17 +690,13 @@ def main() -> None:
     random.seed(SEED)
     torch.manual_seed(SEED)
     OUT.mkdir(parents=True, exist_ok=True)
-    report: dict = {"order": "SFT -> CPT", "base": args.base}
+    report: dict = {"order": "CPT -> SFT", "base": args.base}
 
     # ---------------------------------------------------------------- stage 0
     banner("STAGE 0 -- baseline")
     model, tokenizer = load_model(args.base, args.load_in_4bit)
     eos = tokenizer.eos_token
 
-    # The CPT corpus is built up front even though it is used in stage 2: its
-    # held-out slices are the perplexity yardstick for *every* stage, and it
-    # must be identical to the one cpt_then_sft.py builds for the comparison
-    # to mean anything (same sources, same SEED, same holdout split).
     cpt_train, cpt_eval, domain_eval_raw, general_eval_raw = build_cpt_dataset(
         eos, args.cpt_docs, args.general_ratio)
 
@@ -722,11 +708,53 @@ def main() -> None:
     report["probes_base"] = probe(model, tokenizer, "base model")
 
     # ---------------------------------------------------------------- stage 1
-    banner("STAGE 1 -- SFT (response-only loss, rank 16, embeddings frozen)")
+    banner("STAGE 1 -- CPT (all-token loss, rank 32, embeddings unfrozen)")
+    model = attach_lora(model, rank=32, targets=CPT_TARGETS)
+    model.print_trainable_parameters()
+    enable_training(model)
+
+    trainer = make_trainer(
+        model, tokenizer, cpt_train, cpt_eval,
+        out_dir=OUT / "cpt_ckpt",
+        lr=2e-4,
+        embedding_lr=2e-5,        # 10x lower: these layers touch every token
+        max_steps=args.cpt_steps,
+        epochs=1,
+        packing=True,             # no wasted padding on raw text
+        batch=args.batch,
+        accum=args.accum,
+        warmup=min(100, max(5, args.cpt_steps // 10)),
+    )
+    cpt_stats = trainer.train()
+    report["cpt_train_loss"] = cpt_stats.training_loss
+
+    report["ppl_after_cpt"] = {
+        "domain": perplexity(model, tokenizer, domain_eval_raw),
+        "general": perplexity(model, tokenizer, general_eval_raw),
+    }
+    print(f"[ppl] after CPT -> {report['ppl_after_cpt']}")
+    report["probes_after_cpt"] = probe(model, tokenizer, "after CPT")
+
+    model.save_pretrained(str(CPT_ADAPTER))
+    tokenizer.save_pretrained(str(CPT_ADAPTER))
+    banner("merging CPT adapter into the base weights")
+    model.save_pretrained_merged(str(CPT_MERGED), tokenizer,
+                                 save_method="merged_16bit")
+
+    if args.push_to_hub and args.push_adapters:
+        push_adapter(model, tokenizer,
+                     resolve_repo(args.push_to_hub, "-stage1-cpt-lora"),
+                     args.hf_token, args.hf_private)
+
+    del model, trainer
+    torch.cuda.empty_cache()
+
+    # ---------------------------------------------------------------- stage 2
+    banner("STAGE 2 -- SFT (response-only loss, rank 16, embeddings frozen)")
+    model, tokenizer = load_model(str(CPT_MERGED), args.load_in_4bit)
+    eos = tokenizer.eos_token
+
     sft_train, sft_eval = build_sft_dataset(eos, args.sft_rows, args.format_mix)
-    print("\n[sft-data] one rendered example:\n" + "-" * 60)
-    print(sft_train[0]["text"][:900])
-    print("-" * 60)
 
     model = attach_lora(model, rank=16, targets=SFT_TARGETS)
     model.print_trainable_parameters()
@@ -736,10 +764,7 @@ def main() -> None:
         model, tokenizer, sft_train, sft_eval,
         out_dir=OUT / "sft_ckpt",
         lr=2e-4,
-        embedding_lr=None,        # embeddings stay frozen -- but note the model
-                                  # has not seen the domain yet, so it is
-                                  # learning the template over tokens it has no
-                                  # good representation for
+        embedding_lr=None,        # vocabulary is fine; only behaviour changes
         max_steps=args.sft_steps,
         epochs=2,
         packing=False,            # required: response-only masking needs
@@ -759,60 +784,12 @@ def main() -> None:
         "general": perplexity(model, tokenizer, general_eval_raw),
     }
     print(f"[ppl] after SFT -> {report['ppl_after_sft']}")
-    report["probes_after_sft"] = probe(model, tokenizer, "after SFT")
-
-    model.save_pretrained(str(SFT_ADAPTER))
-    tokenizer.save_pretrained(str(SFT_ADAPTER))
-    banner("merging SFT adapter into the base weights")
-    model.save_pretrained_merged(str(SFT_MERGED), tokenizer,
-                                 save_method="merged_16bit")
-
-    if args.push_to_hub and args.push_adapters:
-        push_adapter(model, tokenizer,
-                     resolve_repo(args.push_to_hub, "-stage1-sft-lora"),
-                     args.hf_token, args.hf_private)
-
-    del model, trainer
-    torch.cuda.empty_cache()
-
-    # ---------------------------------------------------------------- stage 2
-    banner("STAGE 2 -- CPT (all-token loss, rank 32, embeddings unfrozen)")
-    model, tokenizer = load_model(str(SFT_MERGED), args.load_in_4bit)
-    eos = tokenizer.eos_token
-
-    model = attach_lora(model, rank=32, targets=CPT_TARGETS)
-    model.print_trainable_parameters()
-    enable_training(model)
-
-    trainer = make_trainer(
-        model, tokenizer, cpt_train, cpt_eval,
-        out_dir=OUT / "cpt_ckpt",
-        lr=2e-4,
-        embedding_lr=2e-5,        # 10x lower: these layers touch every token.
-                                  # It also limits how far the freshly-tuned
-                                  # instruction behaviour can be dragged back
-                                  # toward plain document continuation.
-        max_steps=args.cpt_steps,
-        epochs=1,
-        packing=True,             # no wasted padding on raw text
-        batch=args.batch,
-        accum=args.accum,
-        warmup=min(100, max(5, args.cpt_steps // 10)),
-    )
-    cpt_stats = trainer.train()
-    report["cpt_train_loss"] = cpt_stats.training_loss
-
-    report["ppl_after_cpt"] = {
-        "domain": perplexity(model, tokenizer, domain_eval_raw),
-        "general": perplexity(model, tokenizer, general_eval_raw),
-    }
-    print(f"[ppl] after CPT -> {report['ppl_after_cpt']}")
-    report["probes_final"] = probe(model, tokenizer, "after SFT + CPT (final)")
+    report["probes_final"] = probe(model, tokenizer, "after CPT + SFT (final)")
 
     # ---------------------------------------------------------------- export
-    model.save_pretrained(str(CPT_ADAPTER))
-    tokenizer.save_pretrained(str(CPT_ADAPTER))
-    banner("merging CPT adapter -> deployable single-checkpoint model")
+    model.save_pretrained(str(SFT_ADAPTER))
+    tokenizer.save_pretrained(str(SFT_ADAPTER))
+    banner("merging SFT adapter -> deployable single-checkpoint model")
     model.save_pretrained_merged(str(FINAL_MERGED), tokenizer,
                                  save_method="merged_16bit")
 
@@ -822,44 +799,38 @@ def main() -> None:
         push_card(repo, model_card(repo, report, args), args.hf_token)
         report["hub_model"] = f"https://huggingface.co/{repo}"
         if args.push_adapters:
-            adapter_repo = resolve_repo(args.push_to_hub, "-stage2-cpt-lora")
+            adapter_repo = resolve_repo(args.push_to_hub, "-stage2-sft-lora")
             push_adapter(model, tokenizer, adapter_repo,
                          args.hf_token, args.hf_private)
             report["hub_adapters"] = [
-                f"https://huggingface.co/{resolve_repo(args.push_to_hub, '-stage1-sft-lora')}",
+                f"https://huggingface.co/{resolve_repo(args.push_to_hub, '-stage1-cpt-lora')}",
                 f"https://huggingface.co/{adapter_repo}",
             ]
 
     if not args.keep_intermediate:
-        shutil.rmtree(SFT_MERGED, ignore_errors=True)
-        print(f"[cleanup] removed {SFT_MERGED} (pass --keep-intermediate to retain)")
+        shutil.rmtree(CPT_MERGED, ignore_errors=True)
+        print(f"[cleanup] removed {CPT_MERGED} (pass --keep-intermediate to retain)")
 
     (OUT / "report.json").write_text(json.dumps(report, indent=2))
 
-    banner("SUMMARY -- SFT -> CPT")
+    banner("SUMMARY -- CPT -> SFT")
     print(f"  domain ppl : {report['ppl_before']['domain']:.1f}"
-          f" -> {report['ppl_after_sft']['domain']:.1f} (SFT)"
-          f" -> {report['ppl_after_cpt']['domain']:.1f} (CPT)")
+          f" -> {report['ppl_after_cpt']['domain']:.1f} (CPT)"
+          f" -> {report['ppl_after_sft']['domain']:.1f} (SFT)")
     print(f"  general ppl: {report['ppl_before']['general']:.1f}"
-          f" -> {report['ppl_after_sft']['general']:.1f} (SFT)"
-          f" -> {report['ppl_after_cpt']['general']:.1f} (CPT)")
-    print(f"  alpaca EOS : {report['probes_base']['eos_rate']:.0%} (base)"
-          f" -> {report['probes_after_sft']['eos_rate']:.0%} (SFT)"
-          f" -> {report['probes_final']['eos_rate']:.0%} (CPT)")
+          f" -> {report['ppl_after_cpt']['general']:.1f} (CPT)"
+          f" -> {report['ppl_after_sft']['general']:.1f} (SFT)")
     print(f"\n  final model : {FINAL_MERGED}")
-    print(f"  sft adapter : {SFT_ADAPTER}")
     print(f"  cpt adapter : {CPT_ADAPTER}")
+    print(f"  sft adapter : {SFT_ADAPTER}")
     print(f"  report      : {OUT / 'report.json'}")
     if report.get("hub_model"):
         print(f"  on the hub  : {report['hub_model']}")
         for url in report.get("hub_adapters", []):
             print(f"                {url}")
-    print("\nExpectation: domain perplexity ends up in the same place as the "
-          "CPT-first run, but the alpaca probes regress -- answers get longer "
-          "and the EOS rate drops after stage 2, because all-token loss on raw "
-          "prose has no reason to preserve 'answer, then stop'.")
-    print("Compare against runs/cpt_then_sft/report.json (same SEED, same "
-          "step counts) to see the ordering effect isolated.")
+    print("\nExpectation: domain perplexity drops sharply after CPT and stays "
+          "low; the alpaca probes only start producing short, terminated "
+          "answers after SFT.")
 
 
 if __name__ == "__main__":

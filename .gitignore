@@ -1,6 +1,9 @@
-# training artifacts -- checkpoints and merged models are far too big for git
+# training artifacts -- checkpoints and merged models are far too big for git.
+# report.json stays tracked; the adapter and merged-model directories beside
+# it under <TYPE>/reports/<run>/ do not.
 runs/
 outputs/
+*/reports/*/*/
 *.safetensors
 *.bin
 *.gguf

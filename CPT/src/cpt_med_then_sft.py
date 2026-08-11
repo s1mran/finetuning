@@ -1,16 +1,17 @@
 """
-cpt_then_sft.py
-===============
+cpt_med_then_sft.py
+===================
 
 Two-stage domain adaptation of a small base LLM:
 
     base model  ->  Stage 1: CPT  ->  merge  ->  Stage 2: SFT  ->  merge  ->  final
 
 Stage 1 (CPT / continued pre-training)
-    Plain next-token prediction on raw financial prose pulled from SEC 10-K
-    filings. Loss on *every* token. LoRA rank 32 targeting all linear layers
-    **plus** embed_tokens and lm_head, because the model is learning new
-    domain vocabulary ("EBITDA", "diluted EPS", "subordinated debentures").
+    Plain next-token prediction on raw clinical prose pulled from medical
+    practice guidelines. Loss on *every* token. LoRA rank 32 targeting all
+    linear layers **plus** embed_tokens and lm_head, because the model is
+    learning new domain vocabulary ("myocardial infarction", "ACE inhibitor",
+    "differential diagnosis").
     A slice of general text is mixed in to fight catastrophic forgetting.
 
 Stage 2 (SFT / supervised fine-tuning)
@@ -31,14 +32,14 @@ not support Apple MPS.
 
 Usage
 -----
-    python cpt_then_sft.py                     # full run, ~15 min on a T4
-    python cpt_then_sft.py --smoke             # 30 steps per stage, sanity check
-    python cpt_then_sft.py --cpt-steps 400 --sft-steps 400
+    python cpt_med_then_sft.py                     # full run, ~15 min on a T4
+    python cpt_med_then_sft.py --smoke             # 30 steps per stage, sanity check
+    python cpt_med_then_sft.py --cpt-steps 400 --sft-steps 400
 
     # publish to huggingface.co/sidhusarkar (needs `huggingface-cli login` or
     # HF_TOKEN with write scope)
-    python cpt_then_sft.py --push-to-hub
-    python cpt_then_sft.py --push-to-hub other-user/other-repo --push-adapters
+    python cpt_med_then_sft.py --push-to-hub
+    python cpt_med_then_sft.py --push-to-hub other-user/other-repo --push-adapters
 """
 
 from __future__ import annotations
@@ -69,8 +70,8 @@ SEED = 3407
 # Raw domain text for CPT. First entry that loads wins.
 CPT_SOURCES = [
     # (hf_repo, config, split, text_column)
-    ("eloukas/edgar-corpus", "year_2020", "train", "section_7"),   # MD&A prose
-    ("virattt/financial-qa-10K", None, "train", "context"),        # always available
+    ("epfl-llm/guidelines", None, "train", "clean_text"),   # long-form guidelines
+    ("MedRAG/textbooks", None, "train", "content"),         # textbook passages
 ]
 # General replay text. First entry that loads wins -- the bare `wikitext` name
 # stopped resolving once the Hub required namespaced dataset ids.
@@ -80,12 +81,13 @@ GENERAL_SOURCES = [
     ("HuggingFaceFW/fineweb-edu", "sample-10BT", "train", "text"),
 ]
 
-SFT_SOURCE = ("virattt/financial-qa-10K", None, "train")
+SFT_SOURCE = ("lavita/ChatDoctor-HealthCareMagic-100k", None, "train")
 
 HF_USER = "sidhusarkar"                     # default Hub owner
-RUN_NAME = "smollm-135m-fin-cpt-then-sft"   # default Hub repo name
+RUN_NAME = "smollm-135m-med-cpt-then-sft"   # default Hub repo name
 
-OUT = Path("runs/cpt_then_sft")
+_HERE = Path(__file__).resolve().parent
+OUT = _HERE.parent / "reports" / "cpt_med_then_sft"   # <repo>/CPT/reports/...
 CPT_ADAPTER = OUT / "01_cpt_adapter"
 CPT_MERGED = OUT / "02_cpt_merged"
 SFT_ADAPTER = OUT / "03_sft_adapter"
@@ -112,12 +114,12 @@ RESPONSE_PART = "### Response:\n"
 
 # Probes we fire at the model after every stage.
 COMPLETION_PROBES = [
-    "The Company recognized impairment charges of",
-    "Total net revenue for the fiscal year ended",
+    "The patient presented with acute onset of",
+    "First-line pharmacologic management of hypertension includes",
 ]
 INSTRUCTION_PROBES = [
-    "What is EBITDA?",
-    "What was the total revenue for fiscal year 2023?",
+    "What is hypertension?",
+    "What are the common side effects of metformin?",
 ]
 GENERAL_PROBE = "The cat sat on the"
 
@@ -186,20 +188,20 @@ tags:
 - lora
 - continued-pretraining
 - sft
-- finance
+- medical
 datasets:
-- virattt/financial-qa-10K
+- lavita/ChatDoctor-HealthCareMagic-100k
 ---
 
 # {repo.split('/')[-1]}
 
-Two-stage domain adaptation of `{args.base}` on SEC 10-K financial text, run in
+Two-stage domain adaptation of `{args.base}` on clinical text, run in
 the **{report['order']}** order.
 
 | stage | objective | LoRA | trained modules |
 |---|---|---|---|
-| 1 — CPT | all-token loss on raw 10-K prose (+20% general replay) | r=32 | attention + MLP + `embed_tokens` + `lm_head` |
-| 2 — SFT | response-only loss on Alpaca-formatted 10-K QA | r=16 | attention + MLP |
+| 1 — CPT | all-token loss on medical guideline prose (+20% general replay) | r=32 | attention + MLP + `embed_tokens` + `lm_head` |
+| 2 — SFT | response-only loss on Alpaca-formatted doctor QA | r=16 | attention + MLP |
 
 ## Results
 
@@ -224,13 +226,13 @@ tokenizer = AutoTokenizer.from_pretrained("{repo}")
 prompt = (
     "Below is an instruction that describes a task. Write a response that "
     "appropriately completes the request.\\n\\n"
-    "### Instruction:\\nWhat is EBITDA?\\n\\n### Response:\\n"
+    "### Instruction:\\nWhat is hypertension?\\n\\n### Response:\\n"
 )
 ids = tokenizer(prompt, return_tensors="pt").to(model.device)
 print(tokenizer.decode(model.generate(**ids, max_new_tokens=90)[0]))
 ```
 
-Trained with [Unsloth](https://github.com/unslothai/unsloth) — `cpt_then_sft.py`.
+Trained with [Unsloth](https://github.com/unslothai/unsloth) — `cpt_med_then_sft.py`.
 """
 
 
@@ -274,6 +276,27 @@ def push_card(repo: str, text: str, token: str | None) -> None:
 # ----------------------------------------------------------------------------
 # Data: CPT corpus
 # ----------------------------------------------------------------------------
+
+def show_examples(label: str, texts: list[str], n: int = 2, width: int = 700) -> None:
+    """Print real training strings, exactly as the trainer will see them.
+
+    Silent data bugs -- a renamed text column, an empty context, a template
+    whose response marker never renders -- are invisible in a loss curve and
+    obvious the moment you look at the strings. `<eos>` should be visible at
+    the end of every one; that trailing token is what teaches the model to
+    stop.
+    """
+    if not texts:
+        print(f"\n[{label}] EMPTY -- nothing will be trained from this split")
+        return
+    print(f"\n[{label}] {len(texts)} examples, showing {min(n, len(texts))}:")
+    for i, text in enumerate(texts[:n]):
+        body = text[:width] + (" ...[truncated]" if len(text) > width else "")
+        print("  " + "-" * 68)
+        print(f"  #{i}  ({len(text)} chars)")
+        print("  | " + body.replace("\n", "\n  | "))
+    print("  " + "-" * 68)
+
 
 def chunk_words(text: str, size: int = 256, overlap: float = 0.2) -> list[str]:
     """Word-level chunking with overlap so no sentence is cut out of context."""
@@ -347,11 +370,15 @@ def build_cpt_dataset(eos: str, n_docs: int, general_ratio: float):
     general = load_general_chunks(n_general + 100)
     general_eval, general_train = general[:100], general[100:]
 
-    mixed = [t + eos for t in domain_train + general_train]
+    domain_texts = [t + eos for t in domain_train]
+    general_texts = [t + eos for t in general_train]
+    mixed = domain_texts + general_texts
     random.Random(SEED).shuffle(mixed)
 
     print(f"[cpt-data] train={len(mixed)} "
           f"(domain={len(domain_train)}, general={len(general_train)})")
+    show_examples("cpt-data / domain", domain_texts, 2)
+    show_examples("cpt-data / general replay", general_texts, 1)
     return (
         Dataset.from_dict({"text": mixed}),
         Dataset.from_dict({"text": [t + eos for t in domain_eval[:200]]}),
@@ -379,20 +406,34 @@ def build_sft_dataset(eos: str, n_rows: int, format_mix: float):
     rng = random.Random(SEED)
     texts = []
     for row in ds:
-        q = (row.get("question") or "").strip()
-        a = (row.get("answer") or "").strip()
-        ctx = (row.get("context") or "").strip()
+        q = (row.get("instruction") or "").strip()
+        a = (row.get("output") or "").strip()
+        ctx = (row.get("input") or "").strip()
         if not q or not a:
             continue
-        # Format-overfitting mitigation: show the model the question both with
-        # and without the retrieved context, so it doesn't learn "answers only
-        # exist when an ### Input block is present".
+        # Format-overfitting mitigation: show the model the case both with and
+        # without an ### Input block, so it doesn't learn "answers only exist
+        # when an ### Input block is present".
         use_ctx = ctx and rng.random() > format_mix
-        texts.append(render_alpaca(q, ctx if use_ctx else "", a, eos))
+        if use_ctx:
+            texts.append(render_alpaca(q, ctx, a, eos))
+        else:
+            # ChatDoctor's `instruction` is a constant framing sentence ("If
+            # you are a doctor, answer the medical questions...") -- the actual
+            # patient description is in `input`. Dropping the ### Input block
+            # outright would leave an empty task, so fold the description into
+            # the instruction rather than discarding it.
+            texts.append(render_alpaca(f"{q}\n\n{ctx}".strip(), "", a, eos))
 
     rng.shuffle(texts)
     split_at = max(1, int(len(texts) * 0.95))
     print(f"[sft-data] train={split_at}  eval={len(texts) - split_at}")
+    # Two examples, because format_mix means the rendering differs row to row:
+    # one should carry an ### Input block and one should not.
+    with_input = [t for t in texts[:split_at] if "### Input:" in t]
+    without_input = [t for t in texts[:split_at] if "### Input:" not in t]
+    show_examples("sft-data / with ### Input", with_input, 1)
+    show_examples("sft-data / no ### Input", without_input, 1)
     return (
         Dataset.from_dict({"text": texts[:split_at]}),
         Dataset.from_dict({"text": texts[split_at:]}),
@@ -723,9 +764,6 @@ def main() -> None:
     eos = tokenizer.eos_token
 
     sft_train, sft_eval = build_sft_dataset(eos, args.sft_rows, args.format_mix)
-    print("\n[sft-data] one rendered example:\n" + "-" * 60)
-    print(sft_train[0]["text"][:900])
-    print("-" * 60)
 
     model = attach_lora(model, rank=16, targets=SFT_TARGETS)
     model.print_trainable_parameters()
