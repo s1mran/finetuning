@@ -83,7 +83,13 @@ CPT_SOURCES = [
     ("eloukas/edgar-corpus", "year_2020", "train", "section_7"),   # MD&A prose
     ("virattt/financial-qa-10K", None, "train", "context"),        # always available
 ]
-GENERAL_SOURCE = ("wikitext", "wikitext-2-raw-v1", "train", "text")
+# General replay text. First entry that loads wins -- the bare `wikitext` name
+# stopped resolving once the Hub required namespaced dataset ids.
+GENERAL_SOURCES = [
+    ("Salesforce/wikitext", "wikitext-2-raw-v1", "train", "text"),
+    ("wikimedia/wikipedia", "20231101.en", "train", "text"),
+    ("HuggingFaceFW/fineweb-edu", "sample-10BT", "train", "text"),
+]
 
 SFT_SOURCE = ("virattt/financial-qa-10K", None, "train")
 
@@ -317,21 +323,27 @@ def load_domain_chunks(n_docs: int) -> list[str]:
 
 
 def load_general_chunks(n: int) -> list[str]:
-    repo, config, split, column = GENERAL_SOURCE
-    try:
-        ds = load_dataset(repo, config, split=split, streaming=True)
-        out = []
-        for row in ds:
-            text = (row.get(column) or "").strip()
-            if len(text.split()) > 60:
-                out.extend(chunk_words(text))
-            if len(out) >= n:
-                break
-        print(f"[cpt-data] general replay: {len(out[:n])} chunks")
-        return out[:n]
-    except Exception as exc:
-        print(f"[cpt-data] general source unavailable ({exc}); skipping mix")
-        return []
+    for repo, config, split, column in GENERAL_SOURCES:
+        try:
+            ds = load_dataset(repo, config, split=split, streaming=True)
+            out = []
+            for row in ds:
+                text = (row.get(column) or "").strip()
+                if len(text.split()) > 60:
+                    out.extend(chunk_words(text))
+                if len(out) >= n:
+                    break
+            if out:
+                print(f"[cpt-data] general replay: {repo}, {len(out[:n])} chunks")
+                return out[:n]
+        except Exception as exc:
+            print(f"[cpt-data] {repo} unavailable ({type(exc).__name__}: {exc})")
+    # Without replay there is no forgetting control and no general perplexity
+    # number -- that is a broken experiment, not a degraded one.
+    raise RuntimeError(
+        "No general-replay corpus could be loaded; the catastrophic-forgetting "
+        "mitigation and the general-perplexity metric both depend on it."
+    )
 
 
 def build_cpt_dataset(eos: str, n_docs: int, general_ratio: float):
@@ -423,6 +435,25 @@ SFT_TARGETS = [
     "q_proj", "k_proj", "v_proj", "o_proj",
     "gate_proj", "up_proj", "down_proj",
 ]
+
+
+def enable_training(model) -> None:
+    """`FastLanguageModel.for_training` with the probe-then-train crash guarded.
+
+    `for_inference()` stamps `_flag_for_generation` onto the modules it walks,
+    and `for_training()` unconditionally `del`s it again. Probing the base
+    model before stage 1 -- which is the whole point of the baseline -- means
+    the LoRA wrapper added afterwards never got stamped, so the delete raises
+    AttributeError. Seed the flag along the same walk so the delete is a no-op.
+    """
+    m = model
+    while True:
+        if not hasattr(m, "_flag_for_generation"):
+            m._flag_for_generation = True
+        if not hasattr(m, "model"):
+            break
+        m = m.model
+    FastLanguageModel.for_training(model)
 
 
 def attach_lora(model, *, rank: int, targets: list[str]):
@@ -539,7 +570,9 @@ def perplexity(model, tokenizer, texts: list[str], limit: int = 120) -> float:
         n = ids.shape[1] - 1
         nll += loss * n
         ntok += n
-    return math.exp(nll / max(1, ntok))
+    if ntok == 0:                    # empty corpus -> no number, not "1.0"
+        return float("nan")
+    return math.exp(nll / ntok)
 
 
 @torch.no_grad()
@@ -691,7 +724,7 @@ def main() -> None:
 
     model = attach_lora(model, rank=16, targets=SFT_TARGETS)
     model.print_trainable_parameters()
-    FastLanguageModel.for_training(model)
+    enable_training(model)
 
     trainer = make_trainer(
         model, tokenizer, sft_train, sft_eval,
@@ -743,7 +776,7 @@ def main() -> None:
 
     model = attach_lora(model, rank=32, targets=CPT_TARGETS)
     model.print_trainable_parameters()
-    FastLanguageModel.for_training(model)
+    enable_training(model)
 
     trainer = make_trainer(
         model, tokenizer, cpt_train, cpt_eval,
