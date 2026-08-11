@@ -467,6 +467,53 @@ SFT_TARGETS = [
 ]
 
 
+def warn_if_overfit(trainer, label: str) -> dict:
+    """Compare first and last eval_loss; a rise means the run memorised.
+
+    Small fallback corpora make this easy to hit: 300 steps over a few hundred
+    chunks is dozens of epochs, and train loss keeps falling while eval loss
+    turns back up. The perplexity numbers downstream are then worse than the
+    base model, which is a result worth seeing stated rather than inferred.
+    """
+    evals = [e["eval_loss"] for e in trainer.state.log_history if "eval_loss" in e]
+    if len(evals) < 2:
+        return {}
+    first, best, last = evals[0], min(evals), evals[-1]
+    print(f"[fit {label}] eval_loss {first:.3f} -> {last:.3f} (best {best:.3f})")
+    if last > first:
+        print(f"  WARNING: eval loss ROSE by {last - first:.3f}. This stage "
+              f"overfit -- train loss fell while held-out loss climbed. Lower "
+              f"--{label}-steps, or raise --{label}-docs for a bigger corpus.")
+    return {"eval_first": first, "eval_best": best, "eval_last": last}
+
+
+def verify_merged(path, texts: list[str], expected: float, label: str) -> dict:
+    """Reload the merged checkpoint and re-measure perplexity on it.
+
+    Every number printed above this point came from the live PEFT model in
+    memory. The merged directory is the thing people actually download, and
+    nothing had ever loaded it back -- which is how a merge that corrupted the
+    tied embed_tokens/lm_head weight stayed invisible in a summary that looked
+    healthy. Compare, and refuse to call it fine if it is not.
+    """
+    try:
+        merged, tok = load_model(str(path), False)
+        got = perplexity(merged, tok, texts)
+        ratio = got / max(1e-9, expected)
+        print(f"[merge-check {label}] adapter ppl={expected:.2f}  "
+              f"merged ppl={got:.2f}  (x{ratio:.2f})")
+        if ratio > 1.5:
+            print(f"  WARNING: the merged checkpoint at {path} scores {ratio:.1f}x "
+                  f"worse than the adapter it came from. The merge lost "
+                  f"something -- do not publish this checkpoint.")
+        del merged
+        torch.cuda.empty_cache()
+        return {"adapter_ppl": expected, "merged_ppl": got, "ratio": ratio}
+    except Exception as exc:
+        print(f"[merge-check {label}] could not verify ({type(exc).__name__}: {exc})")
+        return {}
+
+
 def enable_training(model) -> None:
     """`FastLanguageModel.for_training` with the probe-then-train crash guarded.
 
@@ -490,6 +537,27 @@ def enable_training(model) -> None:
             break
         m = inner
     FastLanguageModel.for_training(model)
+
+
+def resolve_cpt_targets(model, targets: list[str]) -> list[str]:
+    """Drop `lm_head` when it is tied to `embed_tokens`.
+
+    SmolLM sets `tie_word_embeddings=True`: `lm_head` and `embed_tokens` are
+    the *same* physical weight. Listing both as LoRA targets puts two
+    independent deltas on one matrix; peft warns that this breaks merging, and
+    it does -- the merged checkpoint scores far worse than the base model it
+    came from, which only shows up when something later loads it back.
+
+    Training `embed_tokens` alone still moves the output head, because they
+    are tied. Nothing is lost by dropping `lm_head`; a corrupted merge is.
+    """
+    if not getattr(getattr(model, "config", None), "tie_word_embeddings", False):
+        return targets
+    if "lm_head" not in targets:
+        return targets
+    print("[lora] tie_word_embeddings=True -> dropping lm_head from the CPT "
+          "targets (same weight as embed_tokens; adapting both corrupts the merge)")
+    return [t for t in targets if t != "lm_head"]
 
 
 def attach_lora(model, *, rank: int, targets: list[str]):
@@ -718,7 +786,8 @@ def main() -> None:
 
     # ---------------------------------------------------------------- stage 1
     banner("STAGE 1 -- CPT (all-token loss, rank 32, embeddings unfrozen)")
-    model = attach_lora(model, rank=32, targets=CPT_TARGETS)
+    model = attach_lora(model, rank=32,
+                    targets=resolve_cpt_targets(model, CPT_TARGETS))
     model.print_trainable_parameters()
     enable_training(model)
 
@@ -735,6 +804,7 @@ def main() -> None:
         warmup=min(100, max(5, args.cpt_steps // 10)),
     )
     cpt_stats = trainer.train()
+    report["fit_cpt"] = warn_if_overfit(trainer, "cpt")
     report["cpt_train_loss"] = cpt_stats.training_loss
 
     report["ppl_after_cpt"] = {
@@ -786,6 +856,7 @@ def main() -> None:
     show_masking(trainer, tokenizer)
 
     sft_stats = trainer.train()
+    report["fit_sft"] = warn_if_overfit(trainer, "sft")
     report["sft_train_loss"] = sft_stats.training_loss
 
     report["ppl_after_sft"] = {
@@ -801,6 +872,9 @@ def main() -> None:
     banner("merging SFT adapter -> deployable single-checkpoint model")
     model.save_pretrained_merged(str(FINAL_MERGED), tokenizer,
                                  save_method="merged_16bit")
+    report["merge_check"] = verify_merged(
+        FINAL_MERGED, domain_eval_raw,
+        report["ppl_after_sft"]["domain"], "final")
 
     if args.push_to_hub:
         repo = resolve_repo(args.push_to_hub)
