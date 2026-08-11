@@ -1,0 +1,45 @@
+{
+  "order": "SFT -> CPT",
+  "base": "unsloth/SmolLM-135M",
+  "ppl_before": {
+    "domain": 22.896948421755983,
+    "general": 34.47096227686695
+  },
+  "probes_base": {
+    "completion::The Company recognized impairment charges of": "$100,000 and $100,000 for each of the three companies. The company also paid $100,000 in interest on the bonds. The company also paid $100,000 in interest on the bonds.",
+    "completion::Total net revenue for the fiscal year ended": "31 December 2019 was $1,144,100.\nThe total number of employees in the company was 1,000.\nThe total number of employees in the company was 1,000.\nThe total number of",
+    "alpaca::What is EBITDA?": "EBITDA is a measure of a company's profitability. It is calculated by subtracting the cost of goods sold from the revenue. The cost of goods sold is the cost of the goods sold by the company, while the revenue is the amount of money the company makes from selling those goods.\n\n### Instructions:\n\nWrite a response that appropriately completes the request.\n\n### Instructions:\n\nWrite a response that appropriately completes the request",
+    "alpaca::What was the total revenue for fiscal year 2023?": "The total revenue for fiscal year 2023 was $100,000. The total revenue for fiscal year 2023 was$100,000.\n\n### Instructions:\n\nWrite a response that appropriately completes the request.\n\n### Instructions:\n\nWrite a response that appropriately completes the request.\n\n### Instructions:\n\nWrite a response that appropriately completes the request",
+    "bare::What is EBITDA?": "EBITDA is a financial metric that measures a company\u2019s earnings before interest, taxes, depreciation, and amortization (EBITDA). It is calculated by subtracting the cost of goods sold from the income statement.\nEBITDA is a useful metric for understanding a company\u2019s",
+    "general::The cat sat on the": "table, and the dog sat on the floor.\nThe cat sat on the table, and the dog sat on the floor.\nThe cat sat",
+    "eos_rate": 0.0
+  },
+  "sft_train_loss": 1.1237318007151287,
+  "ppl_after_sft": {
+    "domain": 22.30237459103167,
+    "general": 36.07282232359593
+  },
+  "probes_after_sft": {
+    "completion::The Company recognized impairment charges of": "$100 million in 1999 and $150 million in 2000. The company also reported impairment charges of $100 million in 2001 and $150 million in 2002. The company also reported impairment",
+    "completion::Total net revenue for the fiscal year ended": "31 December 2019 was $1,149 million. The net income for the fiscal year ended 31 December 2019 was $1,149 million.",
+    "alpaca::What is EBITDA?": "EBITDA is a measure of a company's operating profit. It is calculated by subtracting operating expenses from net income.",
+    "alpaca::What was the total revenue for fiscal year 2023?": "$1.2 billion",
+    "bare::What is EBITDA?": "EBITDA is a measure of a company's earnings before interest, taxes, depreciation, and amortization (EBITDA). It is calculated by subtracting the cost of goods sold from the cost of goods sold, subtracting the cost of goods sold from the cost of operating expenses, and subtracting",
+    "general::The cat sat on the": "table, and the dog sat on the floor.\nThe cat sat on the table, and the dog sat on the floor.",
+    "eos_rate": 1.0
+  },
+  "cpt_train_loss": 2.6993413543701172,
+  "ppl_after_cpt": {
+    "domain": 18.98312684761354,
+    "general": 29.490895854482496
+  },
+  "probes_final": {
+    "completion::The Company recognized impairment charges of": "$1.0 billion in 2023 and $1.5 billion in 2022 for the period ended December 31, 2023, and incurred $1.0 billion in 2022 for the period ended December 31,",
+    "completion::Total net revenue for the fiscal year ended": "December 31, 2023 was $10.0 billion. The Company reported a net revenue increase of $0.0 billion in the fiscal year ended December 31, 2023, primarily due to the increase in the volume of its sales and the",
+    "alpaca::What is EBITDA?": "EBITDA is the breakeven point of net sales for a period of time. It is calculated by dividing net sales by net revenue.",
+    "alpaca::What was the total revenue for fiscal year 2023?": "$1.2 billion",
+    "bare::What is EBITDA?": "EBITDA is the measure of earnings before interest, taxes, depreciation, and amortization (EBITDA) for a period of time. It is calculated by subtracting non-cash income taxes, depreciation, amortization, interest expense, and other income taxes, net income, and other",
+    "general::The cat sat on the": "bed, and the cat was not able to move. The cat was unable to move because the cat was not able to move the cat. The cat",
+    "eos_rate": 1.0
+  }
+}

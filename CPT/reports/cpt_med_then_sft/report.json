@@ -1,0 +1,42 @@
+{
+  "order": "CPT -> SFT",
+  "base": "unsloth/SmolLM-135M",
+  "ppl_before": {
+    "domain": 17.25796679796954,
+    "general": 34.47096227686695
+  },
+  "probes_base": {
+    "completion::The patient presented with acute onset of": "fever, headache, myalgia, and myalgia-like pain. The patient was admitted to the hospital with a history of a recent fall and a history of a recent infection. The patient was admitted to the hospital with a history of a recent fall and a history of a recent infection.",
+    "completion::First-line pharmacologic management of hypertension includes": "the use of antihypertensive medications, which are usually prescribed for a period of 12 to 24 weeks. These medications are usually prescribed for the first 24 weeks of treatment.\n- Antihypertensive medications: These medications are prescribed for the first 24 weeks",
+    "alpaca::What is hypertension?": "Hypertension is a condition in which the blood pressure is higher than normal.\n\n### Instructions:\n\nWrite a response that appropriately completes the request.\n\n### Instructions:\n\nWrite a response that appropriately completes the request.\n\n### Instructions:\n\nWrite a response that appropriately completes the request.\n\n### Instructions:\n\nWrite a response that appropriately completes the request.\n\n### Instructions:\n\nWrite a response",
+    "alpaca::What are the common side effects of metformin?": "Metformin is a drug that is used to treat type 2 diabetes. Metformin is a drug that is used to treat type 2 diabetes. Metformin is a drug that is used to treat type 2 diabetes. Metformin is a drug that is used to treat type 2 diabetes. Metformin is a drug that is used to treat type 2 diabetes. Metformin is a drug that is used",
+    "bare::What is hypertension?": "Hypertension is a medical condition in which the blood pressure in the arteries is higher than normal. It is a common condition that affects millions of people worldwide.\nWhat are the symptoms of hypertension?\nThe symptoms of hypertension can vary depending on the severity of the condition. Some common symptoms include:",
+    "general::The cat sat on the": "table, and the dog sat on the floor.\nThe cat sat on the table, and the dog sat on the floor.\nThe cat sat"
+  },
+  "cpt_train_loss": 2.8065793037414553,
+  "ppl_after_cpt": {
+    "domain": 15.505369298862696,
+    "general": 26.087502234151454
+  },
+  "probes_after_cpt": {
+    "completion::The patient presented with acute onset of": "fever, headache, myalgia, and myalgia-like pain. The patient was admitted to the ICU with a history of a recent bout of influenza. The patient was admitted to the ICU with a history of a recent bout of influenza. The patient was admitted to the ICU",
+    "completion::First-line pharmacologic management of hypertension includes": "the use of ACE inhibitors and angiotensin receptor blockers (ARBs) in patients with established hypertension. The use of these medications is associated with a reduction in the risk of cardiovascular events, including stroke, myocardial infarction, and sudden death. The use of ACE inhibitors and ARBs is associated with a",
+    "alpaca::What is hypertension?": "Hypertension is a condition in which the blood pressure is higher than normal. It is a medical condition that can be caused by a number of factors, including:\n\u2022 High blood pressure (hypertension)\n\u2022 High blood cholesterol levels (high blood pressure)\n\u2022 Family history of high blood pressure (hypertension)\n\u2022 Being overweight or obese (high blood pressure)\n\u2022 Sedentary lifestyle (high blood pressure)\n\u2022 Lack of physical",
+    "alpaca::What are the common side effects of metformin?": "Metformin is a drug that is used to treat type 2 diabetes. Metformin is a drug that is used to treat type 2 diabetes. Metformin is a drug that is used to treat type 2 diabetes. Metformin is a drug that is used to treat type 2 diabetes. Metformin is a drug that is used to treat type 2 diabetes. Metformin is a drug that is used to",
+    "bare::What is hypertension?": "Hypertension is a condition in which the blood pressure is higher than normal. It is a common condition that affects millions of people worldwide. It is a risk factor for many serious health conditions, including heart disease, stroke, and kidney disease. Hypertension can be caused by a variety of factors, including genetics,",
+    "general::The cat sat on the": "table, and the dog sat on the floor. The cat was very angry and the dog was very angry. The cat was very angry and the dog"
+  },
+  "sft_train_loss": 6.529763348897299,
+  "ppl_after_sft": {
+    "domain": 864.3618030511376,
+    "general": 1181.5100713623178
+  },
+  "probes_final": {
+    "completion::The patient presented with acute onset of": "acute respiratory distress syndrome . It has been reported among patients who had had acute respiratory distress syndrome before being treated . It has also been reported among patients who had had acute respiratory distress syndrome after having had surgery . It has also been reported among patients who had had acute respiratory distress syndrome after having had surgery .",
+    "completion::First-line pharmacologic management of hypertension includes": "antihypertensive medications such Asangiotensin Converting Enzyme Inhibitor Inhibitor Inhibitor Inhibitor Inhibitor Inhibitor Inhibitor Inhibitor Inhibitor Inhibitor Inhibitor Inhibitor Inhibitor Inhibitor Inhibitor In",
+    "alpaca::What is hypertension?": "Hi there were no symptoms associated With hypertension but there could also cause some symptoms like dizziness due To heart attack which could lead towards heart failure which could lead towards death if left untreated due To heart attack which could lead towards heart failure which could lead towards death if left untreated due To heart attack which could lead towards heart failure which could lead towards death if left untreated due To heart attack which could lead towards heart failure which could lead towards death if left untreated due",
+    "alpaca::What are the common side effects of metformin?": "Hi there were some common side effects like nausea due",
+    "bare::What is hypertension?": "high blood pressure due To increased resistance against blood flow through narrowed arteries due To increased resistance against blood flow through narrowed arteries due To increased resistance against blood flow through narrowed arteries due To increased resistance against blood flow through narrowed arteries due To increased resistance against blood flow through narrowed arteries due To increased resistance against blood flow",
+    "general::The cat sat on the": ""
+  }
+}

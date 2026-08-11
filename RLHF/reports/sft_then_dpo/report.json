@@ -1,0 +1,71 @@
+{
+  "order": "SFT -> DPO",
+  "base": "unsloth/SmolLM-135M",
+  "beta": 0.1,
+  "max_length_ratio": 1.5,
+  "ppl_before": 33.17639654887207,
+  "pref_acc_before": 0.5932203389830508,
+  "probes_base": {
+    "empathy::I just found out I didn't get the job I really wanted.": "I just found out I didn't get the job I really wanted.\n\n### Instructions:\n\nWrite a response that appropriately completes the request.\n\n### Instructions:\n\nWrite a response that appropriately completes the request.\n\n### Instructions:\n\nWrite a response that appropriately completes the request.\n\n### Instructions:\n\nWrite a response that appropriately completes the request.\n\n### Instructions:\n\nWrite a response that",
+    "empathy::My dog died last week and the house feels so empty.": "I am sorry to hear that.\n\n### Instructions:\n\nWrite a response that appropriately completes the request.\n\n### Instructions:\n\nWrite a response that appropriately completes the request.\n\n### Instructions:\n\nWrite a response that appropriately completes the request.\n\n### Instructions:\n\nWrite a response that appropriately completes the request.\n\n### Instructions:\n\nWrite a response that appropriately completes the request.",
+    "empathy::I'm really nervous about my exam tomorrow.": "I'm really nervous about my exam tomorrow.\n\n### Instructions:\n\nWrite a response that appropriately completes the request.\n\n### Instructions:\n\nWrite a response that appropriately completes the request.\n\n### Instructions:\n\nWrite a response that appropriately completes the request.\n\n### Instructions:\n\nWrite a response that appropriately completes the request.\n\n### Instructions:\n\nWrite a response that appropriately completes the request.",
+    "general::The cat sat on the": "table, and the dog sat on the floor.\nThe cat sat on the table, and the dog sat on the floor.\nThe cat sat"
+  },
+  "stats_base": {
+    "mean_tokens": 119.33333333333333,
+    "max_tokens": 120,
+    "repetition": 0.745402937183759,
+    "eos_rate": 0.0,
+    "samples": {
+      "I just found out I didn't get the job I really wanted.": "I just found out I didn't get the job I really wanted.\n\n### Instructions:\n\nWrite a response that appropriately completes the request.\n\n### Instructions:\n\nWrite a response that appropriately completes the request.\n\n### Instructions:\n\nWrite a response that appropriately completes the request.\n\n### Instructions:\n\nWrite a response that appropriately completes the request.\n\n### Instructions:\n\nWrite a response that appropriately completes the request.\n\n### Instructions:\n\nWrite a response that appropriately completes the request.\n\n### Instructions:\n\nWrite a",
+      "My dog died last week and the house feels so empty.": "I am sorry to hear that.\n\n### Instructions:\n\nWrite a response that appropriately completes the request.\n\n### Instructions:\n\nWrite a response that appropriately completes the request.\n\n### Instructions:\n\nWrite a response that appropriately completes the request.\n\n### Instructions:\n\nWrite a response that appropriately completes the request.\n\n### Instructions:\n\nWrite a response that appropriately completes the request.\n\n### Instructions:\n\nWrite a response that appropriately completes the request.\n\n### Instructions:\n\nWrite a response that appropriately completes the request.",
+      "I'm really nervous about my exam tomorrow.": "I'm really nervous about my exam tomorrow.\n\n### Instructions:\n\nWrite a response that appropriately completes the request.\n\n### Instructions:\n\nWrite a response that appropriately completes the request.\n\n### Instructions:\n\nWrite a response that appropriately completes the request.\n\n### Instructions:\n\nWrite a response that appropriately completes the request.\n\n### Instructions:\n\nWrite a response that appropriately completes the request.\n\n### Instructions:\n\nWrite a response that appropriately completes the request.\n\n### Instructions:\n\nWrite a response that appropriately completes the request"
+    }
+  },
+  "sft_train_loss": 2.978617165883382,
+  "ppl_after_sft": 34.5862711940795,
+  "pref_acc_after_sft": 0.6101694915254238,
+  "probes_after_sft": {
+    "empathy::I just found out I didn't get the job I really wanted.": "I'm sorry to hear that. What happened?",
+    "empathy::My dog died last week and the house feels so empty.": "I'm sorry to hear that. I hope he's okay.",
+    "empathy::I'm really nervous about my exam tomorrow.": "I'm sure you will be nervous.",
+    "general::The cat sat on the": "couch, and the dog sat on the couch.\nWhat is the difference between a cat and a dog?\nA cat is a domesticated animal that"
+  },
+  "stats_after_sft": {
+    "mean_tokens": 10.333333333333334,
+    "max_tokens": 13,
+    "repetition": 0.0,
+    "eos_rate": 1.0,
+    "samples": {
+      "I just found out I didn't get the job I really wanted.": "I'm sorry to hear that. What happened?",
+      "My dog died last week and the house feels so empty.": "I'm sorry to hear that. I hope he's okay.",
+      "I'm really nervous about my exam tomorrow.": "I'm sure you will be nervous."
+    }
+  },
+  "dpo_train_loss": 0.6847044205665589,
+  "dpo_rewards": {
+    "rewards/chosen": -0.06410131603479385,
+    "rewards/rejected": -0.10303814709186554,
+    "rewards/accuracies": 0.7124999761581421,
+    "rewards/margins": 0.038936831057071686
+  },
+  "ppl_after_dpo": 34.52196280166487,
+  "pref_acc_after_dpo": 0.6101694915254238,
+  "probes_after_dpo": {
+    "empathy::I just found out I didn't get the job I really wanted.": "I'm sorry to hear that. What happened?",
+    "empathy::My dog died last week and the house feels so empty.": "I'm sorry to hear that. I hope he's okay.",
+    "empathy::I'm really nervous about my exam tomorrow.": "I'm sure you will be nervous. I'm sure you will be nervous.",
+    "general::The cat sat on the": "couch, and the dog sat on the couch.\nThe cat sat on the couch, and the dog sat on the couch."
+  },
+  "stats_after_dpo": {
+    "mean_tokens": 13.0,
+    "max_tokens": 16,
+    "repetition": 0.11111111111111112,
+    "eos_rate": 1.0,
+    "samples": {
+      "I just found out I didn't get the job I really wanted.": "I'm sorry to hear that. What happened?",
+      "My dog died last week and the house feels so empty.": "I'm sorry to hear that. I hope he's okay.",
+      "I'm really nervous about my exam tomorrow.": "I'm sure you will be nervous. I'm sure you will be nervous."
+    }
+  }
+}

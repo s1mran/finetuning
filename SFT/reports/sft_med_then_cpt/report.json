@@ -1,0 +1,45 @@
+{
+  "order": "SFT -> CPT",
+  "base": "unsloth/SmolLM-135M",
+  "ppl_before": {
+    "domain": 17.25796679796954,
+    "general": 34.47096227686695
+  },
+  "probes_base": {
+    "completion::The patient presented with acute onset of": "fever, headache, myalgia, and myalgia-like pain. The patient was admitted to the hospital with a history of a recent fall and a history of a recent infection. The patient was admitted to the hospital with a history of a recent fall and a history of a recent infection.",
+    "completion::First-line pharmacologic management of hypertension includes": "the use of antihypertensive medications, which are usually prescribed for a period of 12 to 24 weeks. These medications are usually prescribed for the first 24 weeks of treatment.\n- Antihypertensive medications: These medications are prescribed for the first 24 weeks",
+    "alpaca::What is hypertension?": "Hypertension is a condition in which the blood pressure is higher than normal.\n\n### Instructions:\n\nWrite a response that appropriately completes the request.\n\n### Instructions:\n\nWrite a response that appropriately completes the request.\n\n### Instructions:\n\nWrite a response that appropriately completes the request.\n\n### Instructions:\n\nWrite a response that appropriately completes the request.\n\n### Instructions:\n\nWrite a response",
+    "alpaca::What are the common side effects of metformin?": "Metformin is a drug that is used to treat type 2 diabetes. Metformin is a drug that is used to treat type 2 diabetes. Metformin is a drug that is used to treat type 2 diabetes. Metformin is a drug that is used to treat type 2 diabetes. Metformin is a drug that is used to treat type 2 diabetes. Metformin is a drug that is used",
+    "bare::What is hypertension?": "Hypertension is a medical condition in which the blood pressure in the arteries is higher than normal. It is a common condition that affects millions of people worldwide.\nWhat are the symptoms of hypertension?\nThe symptoms of hypertension can vary depending on the severity of the condition. Some common symptoms include:",
+    "general::The cat sat on the": "table, and the dog sat on the floor.\nThe cat sat on the table, and the dog sat on the floor.\nThe cat sat",
+    "eos_rate": 0.0
+  },
+  "sft_train_loss": 3.016103680928548,
+  "ppl_after_sft": {
+    "domain": 17.785840955694734,
+    "general": 36.549559140609155
+  },
+  "probes_after_sft": {
+    "completion::The patient presented with acute onset of": "fever, headache, myalgia, arthralgia, and myalgia. The patient was admitted to the hospital with a history of recent travel to a region with high incidence of malaria. The patient was also found to have a history of recent travel to a region with high incidence of malaria.",
+    "completion::First-line pharmacologic management of hypertension includes": "the use of antihypertensive agents, such as ACE inhibitors, beta-blockers, and diuretics. These agents work by increasing the amount of blood pressure-regulating substances in the body, such as angiotensin II and renin. They also help to lower blood pressure by reducing",
+    "alpaca::What is hypertension?": "Hi, I have gone through your question. I understand your concern. Hypertension is a common disease. It is a common cause of heart attack and stroke. It is a silent disease. It is not easy to detect. It is a silent disease. It is a silent disease. It is a silent disease. It is a silent disease. It is a silent disease. It is a silent disease. It is a silent disease. It is a silent",
+    "alpaca::What are the common side effects of metformin?": "Hi, welcome to Chat Doctor. Metformin is a common oral hypoglycemic agent. It is used for the treatment of diabetes. It is used for the treatment of diabetes. It is used for the treatment of diabetes. It is used for the treatment of diabetes. It is used for the treatment of diabetes. It is used for the treatment of diabetes. It is used for the treatment of diabetes. It is used for the treatment of diabetes.",
+    "bare::What is hypertension?": "Hypertension is a medical condition in which the blood pressure is higher than normal. It is a common disease in which the blood pressure is higher than normal. It is a risk factor for heart disease, stroke, and kidney disease. It is also a risk factor for other diseases such as diabetes,",
+    "general::The cat sat on the": "table, and the dog sat on the bed. The cat sat on the table, and the dog sat on the bed. The cat sat on the",
+    "eos_rate": 0.0
+  },
+  "cpt_train_loss": 2.8291163126627605,
+  "ppl_after_cpt": {
+    "domain": 15.800349333839112,
+    "general": 27.332242380170936
+  },
+  "probes_final": {
+    "completion::The patient presented with acute onset of": "fever, headache, myalgia, and myalgia-like symptoms. The patient had a history of previous episodes of fever and myalgia. The patient had a history of previous episodes of fever and myalgia. The patient had a history of previous episodes of fever and myalgia",
+    "completion::First-line pharmacologic management of hypertension includes": "the use of ACE inhibitors, angiotensin receptor blockers, and diuretics. The choice of therapy depends on the patient's clinical presentation, the severity of the disease, and the presence of comorbidities. The choice of therapy should be based on the patient's clinical presentation, the severity of the disease",
+    "alpaca::What is hypertension?": "Hi, I have gone through your question and I understand your concern. Hypertension is a common condition that can be caused by many factors. It can be caused by a number of factors, including: - High blood pressure - High blood pressure is a condition that can be caused by many factors, including: - High blood pressure is a condition that can be caused by many factors, including: - High blood pressure is a condition that can be caused by many",
+    "alpaca::What are the common side effects of metformin?": "Metformin is a medication that is used to treat type 2 diabetes. It is a medication that is used to treat type 2 diabetes. Metformin is a medication that is used to treat type 2 diabetes. Metformin is a medication that is used to treat type 2 diabetes. Metformin is a medication that is used to treat type 2 diabetes. Metformin is a medication that is used to treat type",
+    "bare::What is hypertension?": "Hypertension is a condition in which the blood pressure is higher than normal. It is a common condition that affects people of all ages. It is a risk factor for many diseases, including heart disease, stroke, and kidney disease. Hypertension can be caused by a variety of factors, including genetics, lifestyle,",
+    "general::The cat sat on the": "table, and the dog sat on the floor. The dog was very happy and the cat was very sad. The dog was very happy and the cat",
+    "eos_rate": 0.0
+  }
+}

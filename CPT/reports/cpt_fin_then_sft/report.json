@@ -1,0 +1,42 @@
+{
+  "order": "CPT -> SFT",
+  "base": "unsloth/SmolLM-135M",
+  "ppl_before": {
+    "domain": 22.896948421755983,
+    "general": 34.47096227686695
+  },
+  "probes_base": {
+    "completion::The Company recognized impairment charges of": "$100,000 and $100,000 for each of the three companies. The company also paid $100,000 in interest on the bonds. The company also paid $100,000 in interest on the bonds.",
+    "completion::Total net revenue for the fiscal year ended": "31 December 2019 was $1,144,100.\nThe total number of employees in the company was 1,000.\nThe total number of employees in the company was 1,000.\nThe total number of",
+    "alpaca::What is EBITDA?": "EBITDA is a measure of a company's profitability. It is calculated by subtracting the cost of goods sold from the revenue. The cost of goods sold is the cost of the goods sold by the company, while the revenue is the amount of money the company makes from selling those goods.\n\n### Instructions:\n\nWrite a response that appropriately completes the request.\n\n### Instructions:\n\nWrite a response that appropriately completes the request",
+    "alpaca::What was the total revenue for fiscal year 2023?": "The total revenue for fiscal year 2023 was $100,000. The total revenue for fiscal year 2023 was$100,000.\n\n### Instructions:\n\nWrite a response that appropriately completes the request.\n\n### Instructions:\n\nWrite a response that appropriately completes the request.\n\n### Instructions:\n\nWrite a response that appropriately completes the request",
+    "bare::What is EBITDA?": "EBITDA is a financial metric that measures a company\u2019s earnings before interest, taxes, depreciation, and amortization (EBITDA). It is calculated by subtracting the cost of goods sold from the income statement.\nEBITDA is a useful metric for understanding a company\u2019s",
+    "general::The cat sat on the": "table, and the dog sat on the floor.\nThe cat sat on the table, and the dog sat on the floor.\nThe cat sat"
+  },
+  "cpt_train_loss": 2.2881316502888995,
+  "ppl_after_cpt": {
+    "domain": 44.984168653423666,
+    "general": 51.5910451320157
+  },
+  "probes_after_cpt": {
+    "completion::The Company recognized impairment charges of": "$1.015 billion of fair valueanneally. Aug 2022 income tax revenue of $1.000. net dairy income per day of $1.004. net fair value in its arahnean days, net of year both years of",
+    "completion::Total net revenue for the fiscal year ended": "June 30[,] 2023 [,] 22[,]43ivided[=]13[,]58[,]83[,]13[,]53[,]27[,]37[",
+    "alpaca::What is EBITDA?": "EBITDA is a measure of operating and related KPIs to financial forecast for the period ended March 31, 2023, based on the operating results of balance for the fiscal period. The Company uses EBITDA as a key metric to measure its operating results of satisfaction (ORS) and other KPPs in the present period.",
+    "alpaca::What was the total revenue for fiscal year 2023?": "The total revenue for fiscal year 2023 was $14,500. The Company recorded a 2% net revenue reduction of$12,100 during the year, which resulted in a decrease of $11,000 net during the fiscal year ended June 30, 2024. The Company could not obtain all of its capital obligations during the year, and the Company believes",
+    "bare::What is EBITDA?": "EBITDA is the most conservative measure of operating profit before interest, tax, and other costs. It excludes non-cash expenses, capitalizing on the impact of changes inicos, and non-cash costs that are not capitalized as non-cash expenses. These costs are recorded in the balance",
+    "general::The cat sat on the": "bed and the cat was unable to move. The owner was shocked and concerned and called the police. The police examined the cat and determined that it was"
+  },
+  "sft_train_loss": 5.297355969746907,
+  "ppl_after_sft": {
+    "domain": 1021.884040928001,
+    "general": 1568.0389171331879
+  },
+  "probes_final": {
+    "completion::The Company recognized impairment charges of": "$ billion during fiscal years ended March",
+    "completion::Total net revenue for the fiscal year ended": "December",
+    "alpaca::What is EBITDA?": "The transaction was completed according",
+    "alpaca::What was the total revenue for fiscal year 2023?": "$ billion $",
+    "bare::What is EBITDA?": "BITDA includes measures related primarily financial measures such investment metrics including net interest rates including interest rates adjusted using market data such interest rates adjusted using market data such interest rates adjusted using market data such interest rates adjusted using market data such interest rates adjusted using market data such interest rates adjusted using market data such interest rates",
+    "general::The cat sat on the": ""
+  }
+}
