@@ -445,14 +445,20 @@ def enable_training(model) -> None:
     model before stage 1 -- which is the whole point of the baseline -- means
     the LoRA wrapper added afterwards never got stamped, so the delete raises
     AttributeError. Seed the flag along the same walk so the delete is a no-op.
+
+    `hasattr` is the wrong test here: PeftModel.__getattr__ delegates unknown
+    attributes to the wrapped base model, so the flag reads as present on the
+    wrapper while actually living on the inner module -- and `del` only removes
+    entries from the object's *own* __dict__. Write straight into __dict__.
     """
-    m = model
-    while True:
-        if not hasattr(m, "_flag_for_generation"):
-            m._flag_for_generation = True
-        if not hasattr(m, "model"):
+    m, seen = model, set()
+    while id(m) not in seen:
+        seen.add(id(m))
+        m.__dict__.setdefault("_flag_for_generation", True)
+        inner = getattr(m, "model", None)
+        if inner is None:
             break
-        m = m.model
+        m = inner
     FastLanguageModel.for_training(model)
 
 
