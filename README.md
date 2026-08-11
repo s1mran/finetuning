@@ -1,5 +1,7 @@
 # finetuning
 
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/s1mran/finetuning/blob/main/run_in_colab.ipynb)
+
 Does the order of **CPT** (continued pre-training) and **SFT** (supervised
 fine-tuning) matter? Two scripts, identical except for stage order.
 
@@ -45,6 +47,9 @@ forget?) · completion probes · alpaca probes (does it answer *and stop*?) ·
 bare-question probe (template overfitting?) · `eos_rate`. All to `report.json`.
 
 ## Usage
+
+Easiest path is [`run_in_colab.ipynb`](run_in_colab.ipynb) — setup, both runs,
+and a side-by-side report comparison, one cell at a time. Otherwise:
 
 ```bash
 pip install unsloth trl peft transformers datasets accelerate bitsandbytes
