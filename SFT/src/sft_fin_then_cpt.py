@@ -541,25 +541,34 @@ def enable_training(model) -> None:
     FastLanguageModel.for_training(model)
 
 
-def resolve_cpt_targets(model, targets: list[str]) -> list[str]:
-    """Drop `lm_head` when it is tied to `embed_tokens`.
+def resolve_cpt_targets(model, targets: list[str], freeze_embeddings: bool = False) -> list[str]:
+    """Decide which of the embedding-adjacent modules CPT may adapt.
 
-    SmolLM sets `tie_word_embeddings=True`: `lm_head` and `embed_tokens` are
-    the *same* physical weight. Listing both as LoRA targets puts two
-    independent deltas on one matrix; peft warns that this breaks merging, and
-    it does -- the merged checkpoint scores far worse than the base model it
-    came from, which only shows up when something later loads it back.
+    Two separate hazards, both from `tie_word_embeddings=True` -- SmolLM makes
+    `lm_head` and `embed_tokens` the *same* physical weight:
 
-    Training `embed_tokens` alone still moves the output head, because they
-    are tied. Nothing is lost by dropping `lm_head`; a corrupted merge is.
+    1. Listing both puts two independent LoRA deltas on one matrix. peft warns
+       that this breaks merging, and it does: the merged checkpoint scored far
+       worse than the base model it came from. Always drop `lm_head`; training
+       `embed_tokens` still moves the output head, because they are tied.
+
+    2. Even one delta on a tied weight can survive training but not survive the
+       merge. That shows up as an intermediate checkpoint whose perplexity is
+       worse than the adapter's -- which is what `verify_merged` now measures at
+       the stage-1 boundary. `--freeze-embeddings` is the escape hatch: adapt
+       attention and MLP only, both of which merge cleanly.
     """
-    if not getattr(getattr(model, "config", None), "tie_word_embeddings", False):
-        return targets
-    if "lm_head" not in targets:
-        return targets
-    print("[lora] tie_word_embeddings=True -> dropping lm_head from the CPT "
-          "targets (same weight as embed_tokens; adapting both corrupts the merge)")
-    return [t for t in targets if t != "lm_head"]
+    tied = getattr(getattr(model, "config", None), "tie_word_embeddings", False)
+    out = list(targets)
+    if tied and "lm_head" in out:
+        print("[lora] tie_word_embeddings=True -> dropping lm_head from the CPT "
+              "targets (same weight as embed_tokens; adapting both corrupts the merge)")
+        out = [t for t in out if t != "lm_head"]
+    if freeze_embeddings and "embed_tokens" in out:
+        print("[lora] --freeze-embeddings -> dropping embed_tokens; CPT will adapt "
+              "attention and MLP only")
+        out = [t for t in out if t != "embed_tokens"]
+    return out
 
 
 def attach_lora(model, *, rank: int, targets: list[str]):
@@ -777,6 +786,10 @@ def main() -> None:
                     help="fraction of SFT rows rendered without an ### Input block")
     ap.add_argument("--batch", type=int, default=8)
     ap.add_argument("--accum", type=int, default=4)
+    ap.add_argument("--freeze-embeddings", action="store_true",
+                    help="exclude embed_tokens from the CPT LoRA targets; use "
+                         "when the stage-1 merge check reports a degraded "
+                         "intermediate checkpoint")
     ap.add_argument("--load-in-4bit", action="store_true")
     ap.add_argument("--smoke", action="store_true", help="tiny run to check wiring")
     ap.add_argument("--keep-intermediate", action="store_true")
@@ -864,6 +877,10 @@ def main() -> None:
     banner("merging SFT adapter into the base weights")
     model.save_pretrained_merged(str(SFT_MERGED), tokenizer,
                                  save_method="merged_16bit")
+    # Stage 2 trains on THIS file, not on the model still in memory.
+    report["merge_check_stage1"] = verify_merged(
+        SFT_MERGED, domain_eval_raw,
+        report["ppl_after_sft"]["domain"], "sft-intermediate")
 
     if args.push_to_hub and args.push_adapters:
         push_adapter(model, tokenizer,
@@ -879,7 +896,8 @@ def main() -> None:
     eos = tokenizer.eos_token
 
     model = attach_lora(model, rank=32,
-                    targets=resolve_cpt_targets(model, CPT_TARGETS))
+                    targets=resolve_cpt_targets(model, CPT_TARGETS,
+                                                args.freeze_embeddings))
     model.print_trainable_parameters()
     enable_training(model)
 
