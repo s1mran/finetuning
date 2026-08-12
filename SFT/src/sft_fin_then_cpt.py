@@ -63,6 +63,7 @@ import json
 import math
 import os
 import random
+import re
 import shutil
 from pathlib import Path
 
@@ -73,15 +74,19 @@ from datasets import Dataset, load_dataset
 # Config
 # ----------------------------------------------------------------------------
 
-BASE_MODEL = "unsloth/SmolLM-135M"
-MAX_SEQ_LEN = 1024
+BASE_MODEL = "HuggingFaceTB/SmolLM-135M"
+MAX_SEQ_LEN = 512
 SEED = 3407
 
 # Raw domain text for CPT. First entry that loads wins.
 CPT_SOURCES = [
     # (hf_repo, config, split, text_column)
-    ("eloukas/edgar-corpus", "year_2020", "train", "section_7"),   # MD&A prose
-    ("virattt/financial-qa-10K", None, "train", "context"),        # always available
+    # Full 10-K filings, ~120k chars each, plain parquet. This replaces
+    # eloukas/edgar-corpus, which is script-based and no longer loadable -- its
+    # fallback was virattt/financial-qa-10K, the SAME corpus stage 2 trains on,
+    # which quietly made the ordering comparison meaningless.
+    ("PleIAs/SEC", None, "train", "text"),
+    ("virattt/financial-qa-10K", None, "train", "context"),        # last resort
 ]
 # General replay text. First entry that loads wins -- the bare `wikitext` name
 # stopped resolving once the Hub required namespaced dataset ids.
@@ -321,24 +326,50 @@ def chunk_words(text: str, size: int = 256, overlap: float = 0.2) -> list[str]:
     ]
 
 
-def load_domain_chunks(n_docs: int) -> list[str]:
+def clean_filing(text: str) -> str:
+    """Strip the boilerplate tail off a filing and normalise whitespace.
+
+    Exhibit indexes, signature blocks and powers of attorney are pure noise
+    for next-token prediction -- they teach the model to emit legal furniture
+    instead of the business prose we want. Only cut when the marker appears
+    late in the document, so a body mention of "signatures" is not treated as
+    the start of the tail.
+    """
+    end = len(text)
+    for pattern in (r"(?i)\bEXHIBIT\s+INDEX\b", r"(?i)\bSIGNATURES\b",
+                    r"(?i)\bPOWER\s+OF\s+ATTORNEY\b", r"(?i)\bEXHIBIT\s+\d"):
+        hits = list(re.finditer(pattern, text))
+        if hits and hits[-1].start() > 0.7 * len(text):
+            end = min(end, hits[-1].start())
+    text = re.sub(r"\n{3,}", "\n\n", text[:end])
+    return re.sub(r" {2,}", " ", text).strip()
+
+
+def load_domain_docs(n_docs: int) -> list[str]:
+    """Return whole documents, NOT chunks.
+
+    The eval split has to be carved at the document level. Chunking first and
+    splitting after puts overlapping windows of the same filing on both sides
+    of the split -- 20% of every eval chunk is verbatim in a training chunk,
+    so the perplexity it reports is partly memorisation.
+    """
     for repo, config, split, column in CPT_SOURCES:
         try:
             print(f"[cpt-data] trying {repo} ({config or 'default'}) ...")
             ds = load_dataset(repo, config, split=split, streaming=True)
             docs, seen = [], 0
             for row in ds:
-                text = (row.get(column) or "").strip()
-                if len(text) > 400:
+                text = clean_filing((row.get(column) or "").strip())
+                if len(text.split()) > 400:
                     docs.append(text)
                 seen += 1
                 if len(docs) >= n_docs or seen >= n_docs * 20:
                     break
             if docs:
-                print(f"[cpt-data] using {repo}: {len(docs)} documents")
-                chunks = [c for d in docs for c in chunk_words(d)]
-                print(f"[cpt-data] -> {len(chunks)} chunks of ~256 words")
-                return chunks
+                words = sum(len(d.split()) for d in docs) / len(docs)
+                print(f"[cpt-data] using {repo}: {len(docs)} documents "
+                      f"(~{words:,.0f} words each)")
+                return docs
         except Exception as exc:  # dataset moved, gated, or offline
             print(f"[cpt-data] {repo} unavailable ({type(exc).__name__}: {exc})")
     raise RuntimeError("No CPT corpus could be loaded. Check network / HF auth.")
@@ -369,12 +400,21 @@ def load_general_chunks(n: int) -> list[str]:
 
 
 def build_cpt_dataset(eos: str, n_docs: int, general_ratio: float):
-    """80% domain / 20% general, per the forgetting-mitigation recipe."""
-    domain = load_domain_chunks(n_docs)
-    random.Random(SEED).shuffle(domain)
+    """80% domain / 20% general, per the forgetting-mitigation recipe.
 
-    holdout = max(50, len(domain) // 20)
-    domain_eval, domain_train = domain[:holdout], domain[holdout:]
+    Split at the DOCUMENT level before chunking, so no eval chunk overlaps a
+    training chunk.
+    """
+    docs = load_domain_docs(n_docs)
+    random.Random(SEED).shuffle(docs)
+
+    n_eval_docs = max(1, len(docs) // 10)
+    eval_docs, train_docs = docs[:n_eval_docs], docs[n_eval_docs:]
+    domain_eval = [c for d in eval_docs for c in chunk_words(d)]
+    domain_train = [c for d in train_docs for c in chunk_words(d)]
+    print(f"[cpt-data] docs train={len(train_docs)} eval={len(eval_docs)} "
+          f"-> chunks train={len(domain_train)} eval={len(domain_eval)} "
+          f"(no document appears on both sides)")
 
     n_general = int(len(domain_train) * general_ratio / max(1e-9, 1 - general_ratio))
     general = load_general_chunks(n_general + 100)
@@ -594,6 +634,8 @@ def make_trainer(model, tokenizer, train_ds, eval_ds, *, out_dir: Path,
                  epochs: float, packing: bool, batch: int, accum: int,
                  warmup: int):
     TrainerCls, ConfigCls = _pick_trainer()
+    # save_steps must equal eval_steps for load_best_model_at_end to work.
+    _eval_every = max(10, (max_steps or 200) // 5)
 
     cfg_kwargs = dict(
         output_dir=str(out_dir),
@@ -604,15 +646,25 @@ def make_trainer(model, tokenizer, train_ds, eval_ds, *, out_dir: Path,
         logging_steps=10,
         optim="adamw_8bit",
         weight_decay=0.01,
-        lr_scheduler_type="linear",
+        lr_scheduler_type="cosine",
+        max_grad_norm=1.0,
         seed=SEED,
         report_to="none",
         fp16=not bf16_ok(),
         bf16=bf16_ok(),
-        save_strategy="no",
         eval_strategy="steps",
-        eval_steps=max(10, (max_steps or 200) // 5),
+        eval_steps=_eval_every,
         per_device_eval_batch_size=batch,
+        # Keep the checkpoint with the lowest held-out loss, not whatever the
+        # last step happened to produce. The finance CPT run rode eval_loss
+        # from 2.90 up to 3.78 while train loss fell, and then shipped those
+        # final weights; this makes that impossible.
+        save_strategy="steps",
+        save_steps=_eval_every,
+        save_total_limit=2,
+        load_best_model_at_end=True,
+        metric_for_best_model="eval_loss",
+        greater_is_better=False,
         # SFTConfig-only knobs; silently dropped on plain TrainingArguments.
         dataset_text_field="text",
         max_seq_length=MAX_SEQ_LEN,
@@ -697,9 +749,14 @@ def generate(model, tokenizer, prompt: str, max_new_tokens: int = 90) -> str:
     out = model.generate(
         **ids,
         max_new_tokens=max_new_tokens,
-        do_sample=False,
-        temperature=None,
-        top_p=None,
+        # Greedy decoding on a 135M model collapses into "X is a drug that is
+        # used to treat Y. X is a drug that is used to treat Y." -- that is a
+        # decoding artefact, not something the training did. Sample, and
+        # penalise repeats, so the probes show what the model learned.
+        do_sample=True,
+        temperature=0.7,
+        top_p=0.9,
+        repetition_penalty=1.2,
         pad_token_id=tokenizer.pad_token_id,
         eos_token_id=tokenizer.eos_token_id,
     )
@@ -790,7 +847,10 @@ def main() -> None:
                     help="exclude embed_tokens from the CPT LoRA targets; use "
                          "when the stage-1 merge check reports a degraded "
                          "intermediate checkpoint")
-    ap.add_argument("--load-in-4bit", action="store_true")
+    # 4-bit is the default, as in the class notebooks: it is what fits a T4
+    # comfortably and what these hyperparameters were tuned against.
+    ap.add_argument("--no-4bit", dest="load_in_4bit", action="store_false",
+                    default=True, help="load in fp16/bf16 instead of 4-bit")
     ap.add_argument("--smoke", action="store_true", help="tiny run to check wiring")
     ap.add_argument("--keep-intermediate", action="store_true")
     ap.add_argument("--push-to-hub", nargs="?", const=HF_USER, metavar="USER[/REPO]",

@@ -94,9 +94,9 @@ from datasets import Dataset, load_dataset
 # Config
 # ----------------------------------------------------------------------------
 
-BASE_MODEL = "unsloth/SmolLM-135M"
-MAX_SEQ_LEN = 1024
-MAX_PROMPT_LEN = 512
+BASE_MODEL = "HuggingFaceTB/SmolLM-135M"
+MAX_SEQ_LEN = 512
+MAX_PROMPT_LEN = 256
 SEED = 3407
 
 # Empathetic dialogue for stage 1. First entry that loads wins.
@@ -616,7 +616,8 @@ def make_sft_trainer(model, tokenizer, train_ds, eval_ds, *, out_dir: Path,
         logging_steps=10,
         optim="adamw_8bit",
         weight_decay=0.01,
-        lr_scheduler_type="linear",
+        lr_scheduler_type="cosine",
+        max_grad_norm=1.0,
         seed=SEED,
         report_to="none",
         fp16=not bf16_ok(),
@@ -730,7 +731,8 @@ def make_dpo_trainer(model, tokenizer, train_ds, eval_ds, *, out_dir: Path,
         logging_steps=10,
         optim="adamw_8bit",
         weight_decay=0.01,
-        lr_scheduler_type="linear",
+        lr_scheduler_type="cosine",
+        max_grad_norm=1.0,
         seed=SEED,
         report_to="none",
         fp16=not bf16_ok(),
@@ -829,8 +831,12 @@ def generate(model, tokenizer, prompt: str, max_new_tokens: int = 90) -> str:
     FastLanguageModel.for_inference(model)
     ids = tokenizer(prompt, return_tensors="pt").to(model.device)
     out = model.generate(
-        **ids, max_new_tokens=max_new_tokens, do_sample=False,
-        temperature=None, top_p=None,
+        **ids, max_new_tokens=max_new_tokens,
+        # Greedy decoding on a 135M model manufactures repeat loops that read
+        # as degeneration but are a decoding artefact. Sample instead, and
+        # penalise repeats, so the length/repetition guards measure the model
+        # rather than the decoder.
+        do_sample=True, temperature=0.7, top_p=0.9, repetition_penalty=1.2,
         pad_token_id=tokenizer.pad_token_id, eos_token_id=tokenizer.eos_token_id,
     )
     return tokenizer.decode(out[0][ids["input_ids"].shape[1]:],
@@ -943,7 +949,10 @@ def main() -> None:
     ap.add_argument("--dpo-lr", type=float, default=5e-6)
     ap.add_argument("--batch", type=int, default=4)
     ap.add_argument("--accum", type=int, default=4)
-    ap.add_argument("--load-in-4bit", action="store_true")
+    # 4-bit is the default, as in the class notebooks: it is what fits a T4
+    # comfortably and what these hyperparameters were tuned against.
+    ap.add_argument("--no-4bit", dest="load_in_4bit", action="store_false",
+                    default=True, help="load in fp16/bf16 instead of 4-bit")
     ap.add_argument("--smoke", action="store_true", help="tiny run to check wiring")
     ap.add_argument("--keep-intermediate", action="store_true")
     ap.add_argument("--push-to-hub", nargs="?", const=HF_USER, metavar="USER[/REPO]",

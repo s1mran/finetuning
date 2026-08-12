@@ -139,14 +139,24 @@ api.upload_folder(folder_path="CPT/reports/cpt_fin_then_sft/04_final_merged",
                   repo_id="user/repo", repo_type="model")
 ```
 
-## Known limitation
+## Design notes
 
-`eloukas/edgar-corpus` — the raw 10-K MD&A prose the finance CPT stage wants —
-is script-based, and `datasets` dropped support for script loaders. Every EDGAR
-mirror checked has the same problem, so the finance runs fall back to the
-`context` column of `virattt/financial-qa-10K`, **the same corpus their SFT
-stage trains on**. That is consistent with the weak result observed in practice
-(domain perplexity 22.0 → 19.9 → 20.3, rather than the sharp drop the design
-predicts). The medical runs do not have this problem — `epfl-llm/guidelines` is
-genuinely distinct from the ChatDoctor SFT data — so treat those as the more
-informative ordering comparison until a loadable EDGAR mirror turns up.
+Configuration follows the class notebooks (`class_9a_f`, `class_9b`,
+`class_10a`): 4-bit loading, 512-token sequences, `HuggingFaceTB/SmolLM-135M`,
+cosine schedule, and `load_best_model_at_end` on `eval_loss` so a stage that
+starts overfitting ships its best checkpoint rather than its last.
+
+Two things the notebooks got right that earlier versions of these scripts did
+not:
+
+- **Split documents before chunking.** Chunking first and splitting after puts
+  overlapping windows of the same filing on both sides of the split, so ~21% of
+  eval vocabulary is verbatim in training and the perplexity is partly
+  memorisation.
+- **Sample when probing.** Greedy decoding on a 135M model collapses into
+  repeat loops that read as degeneration but are a decoding artefact.
+
+The finance CPT corpus is `PleIAs/SEC` — full 10-K filings, plain parquet.
+It replaces `eloukas/edgar-corpus`, which is script-based and no longer
+loadable; its fallback was `virattt/financial-qa-10K`, the same corpus stage 2
+trains on, which quietly made the ordering comparison meaningless.
