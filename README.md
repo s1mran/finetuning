@@ -10,7 +10,8 @@ before it trains, probes the model at every stage boundary, and writes a
 ```
 CPT/   src/ …  reports/     CPT-first ordering
 SFT/   src/ …  reports/     SFT-first ordering (the ablation)
-RLHF/  src/ …  reports/     preference alignment
+RLHF/  src/ …  reports/     preference alignment (SFT -> DPO)
+RLVR/  src/ …  reports/     verifiable rewards (SFT cold start -> GRPO)
 ```
 
 Artifacts land in `<TYPE>/reports/<run>/`, resolved from the script's own
@@ -87,6 +88,32 @@ One thing stated plainly: there is no public preference dataset *about empathy*.
 The empathy signal comes from stage 1 (`Estwld/empathetic_dialogues_llm`);
 stage 2 uses general preference data for response quality. Do not read the DPO
 stage as "learning to be kind".
+
+### Verifiable rewards: SFT cold start → GRPO
+
+[`RLVR/src/sft_then_grpo.py`](RLVR/src/sft_then_grpo.py) — GSM8K with Will
+Brown's reward stack.
+
+GRPO computes each completion's advantage against the mean of its own group:
+
+```
+A_i = (r_i − mean(r_1..r_G)) / std(r_1..r_G)
+```
+
+When every completion in a group scores the same, `A_i` is zero for all of
+them and the update is exactly zero — not small, zero. A base model that never
+emits `<reasoning>` scores 0.0 on every reward including the graduated tag
+count, so the group always agrees with itself and training is a no-op with a
+flat loss curve. RL amplifies behaviour; it cannot invent it.
+
+So stage 1 SFTs the target format in from GSM8K's own worked solutions before
+GRPO runs — the cold start in the R1 recipe. Then `reward_audit` measures mean
+within-group reward std and **refuses to start GRPO if it is ~0**, naming what
+to change, rather than spending an hour to draw a flat line. `--force-grpo`
+overrides; `--skip-sft` reproduces the failure on purpose.
+
+135M is below the practical floor here and the gate will usually say so. For a
+run that moves: `--base unsloth/Qwen2.5-1.5B-Instruct`.
 
 ## Evaluated at every stage boundary
 
