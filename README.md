@@ -103,8 +103,11 @@ a loss curve and obvious in the strings.
 
 Two notebooks:
 
-- [`run_medical.ipynb`](run_medical.ipynb) — the medical ordering pair plus the
-  RLHF run, ~65 min end to end, with result-reading and publish cells.
+- [`medical_cpt_sft.ipynb`](medical_cpt_sft.ipynb) — the medical ordering pair,
+  ~40 min, with an auto-fallback runner and publish cells for HF, GitHub and
+  Drive.
+- [`run_medical.ipynb`](run_medical.ipynb) — the same pair plus the RLHF run,
+  one script per cell.
 - [`run_in_colab.ipynb`](run_in_colab.ipynb) — all five experiments.
 
 Otherwise:
