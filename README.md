@@ -130,6 +130,8 @@ a loss curve and obvious in the strings.
 
 Two notebooks:
 
+- [`run_rlvr.ipynb`](run_rlvr.ipynb) — GRPO with the cold start, the
+  reward-variance gate, and the failure reproduced on purpose.
 - [`medical_cpt_sft.ipynb`](medical_cpt_sft.ipynb) — the medical ordering pair,
   ~40 min, with an auto-fallback runner and publish cells for HF, GitHub and
   Drive.

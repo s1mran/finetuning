@@ -106,7 +106,17 @@ SFT_SOURCES = [
     ("lavita/ChatDoctor-HealthCareMagic-100k", None, "train"),
 ]
 # Preference pairs for stage 2. First entry that loads wins.
+#
+# rm-static leads because it matches what stage 1 teaches. Stage 1 SFTs short
+# empathetic dialogue turns (~10 tokens); UltraFeedback's chosen responses
+# average ~4,800 characters of essay and code. Preference accuracy is measured
+# by summed log-probability over the response, so a model tuned to be terse
+# scores those long answers down for reasons that have nothing to do with
+# preference -- which is what dropped pref_acc from 0.610 to 0.559 after SFT.
+# rm-static is hh-rlhf-derived conversation, ~210 characters, already split
+# into prompt/chosen/rejected.
 PREF_SOURCES = [
+    ("Dahoas/rm-static", None, "train"),
     ("argilla/ultrafeedback-binarized-preferences-cleaned", None, "train"),
     ("Anthropic/hh-rlhf", None, "train"),
 ]

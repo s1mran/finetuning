@@ -103,10 +103,34 @@ MAX_PROMPT_LEN = 256
 MAX_COMPLETION_LEN = 200
 SEED = 3407
 
-GSM8K = ("openai/gsm8k", "main")
+# The task decides whether GRPO can learn at all, more than any hyperparameter.
+#
+# GRPO needs the completions in a group to DISAGREE. With a free-form numeric
+# answer a small model is right essentially never, so all G completions score
+# zero, the group has no variance and the gradient is exactly zero. With 4-way
+# multiple choice, chance alone is 25%: groups routinely come back split, which
+# is the variance the advantage is normalised by.
+#
+# That is why arc is the default here and gsm8k is the honest hard mode.
+TASKS = {
+    "arc": {
+        "repo": ("allenai/ai2_arc", "ARC-Easy"),
+        "answer_kind": "letter",
+        "blurb": "ARC-Easy, 4-way multiple choice (~25% by chance)",
+    },
+    "gsm8k": {
+        "repo": ("openai/gsm8k", "main"),
+        "answer_kind": "digit",
+        "blurb": "GSM8K grade-school word problems (~0% by chance below ~1.5B)",
+    },
+}
+
+# The trl reward-function signature is fixed, so the shape check reads this
+# module-level value rather than taking it as an argument. main() sets it once.
+ANSWER_KIND = "letter"
 
 HF_USER = "sidhusarkar"
-RUN_NAME = "smollm-135m-gsm8k-sft-then-grpo"
+RUN_NAME = "smollm-135m-sft-then-grpo"
 
 _HERE = Path(__file__).resolve().parent
 OUT = _HERE.parent / "reports" / "sft_then_grpo"   # <repo>/RLVR/reports/...
@@ -209,9 +233,18 @@ def correctness_reward(prompts, completions, answer, **kwargs) -> list[float]:
     return [2.0 if g == a else 0.0 for g, a in zip(got, answer)]
 
 
-def int_reward(completions, **kwargs) -> list[float]:
-    """+0.5 when the answer is an integer -- these are arithmetic problems."""
+def shape_reward(completions, **kwargs) -> list[float]:
+    """+0.5 when the answer has the right SHAPE, regardless of correctness.
+
+    A digit for arithmetic, a single choice letter for multiple choice. This is
+    a cheap partial credit that separates "answered the question badly" from
+    "did not answer the question", which is another tie the group can be broken
+    on before correctness starts firing.
+    """
     got = [extract_xml_answer(c[0]["content"]) for c in completions]
+    if ANSWER_KIND == "letter":
+        return [0.5 if g.strip().upper() in {"A", "B", "C", "D", "E"} else 0.0
+                for g in got]
     return [0.5 if g.isdigit() else 0.0 for g in got]
 
 
@@ -256,7 +289,7 @@ def xmlcount_reward(completions, **kwargs) -> list[float]:
 
 
 REWARD_FUNCS = [xmlcount_reward, soft_format_reward, strict_format_reward,
-                int_reward, correctness_reward]
+                shape_reward, correctness_reward]
 REWARD_NAMES = [f.__name__ for f in REWARD_FUNCS]
 
 
@@ -267,7 +300,7 @@ def score_all(text: str, gold: str) -> dict[str, float]:
         "xmlcount_reward": xmlcount_reward(c)[0],
         "soft_format_reward": soft_format_reward(c)[0],
         "strict_format_reward": strict_format_reward(c)[0],
-        "int_reward": int_reward(c)[0],
+        "shape_reward": shape_reward(c)[0],
         "correctness_reward": correctness_reward(None, c, [gold])[0],
     }
 
@@ -283,45 +316,75 @@ def clean_solution(answer: str) -> str:
     return re.sub(r"\n{2,}", "\n", body).strip()
 
 
-def load_gsm8k(split: str, n_rows: int) -> Dataset:
-    repo, config = GSM8K
-    ds = load_dataset(repo, config, split=split)
+LETTERS = "ABCDE"
+
+
+def load_task_rows(task: str, n_rows: int) -> list[dict]:
+    """Normalise whichever task to {question, gold, reasoning}.
+
+    `reasoning` is what the cold start imitates. GSM8K ships human worked
+    solutions; ARC does not, so the reasoning is a single sentence naming the
+    chosen option. That is enough -- the cold start is teaching the *format*,
+    and the reasoning content is what GRPO is then supposed to improve.
+    """
+    repo, config = TASKS[task]["repo"]
+    ds = load_dataset(repo, config, split="train")
     ds = ds.shuffle(seed=SEED).select(range(min(n_rows, len(ds))))
-    return ds
 
-
-def build_grpo_dataset(n_rows: int) -> Dataset:
-    """Prompts in chat form plus the gold answer GRPO's reward will check."""
-    ds = load_gsm8k("train", n_rows)
     rows = []
     for r in ds:
-        gold = extract_hash_answer(r["answer"])
-        if gold is None:
-            continue
-        rows.append({
-            "prompt": [{"role": "system", "content": SYSTEM_PROMPT},
-                       {"role": "user", "content": r["question"]}],
-            "answer": gold,
-        })
-    print(f"[grpo-data] {len(rows)} prompts")
+        if task == "gsm8k":
+            gold = extract_hash_answer(r["answer"])
+            if gold is None:
+                continue
+            rows.append({"question": r["question"], "gold": gold,
+                         "reasoning": clean_solution(r["answer"])})
+        else:
+            texts = r["choices"]["text"]
+            labels = [str(l) for l in r["choices"]["label"]]
+            gold = str(r["answerKey"]).strip()
+            # A few ARC rows label choices 1-4 rather than A-D; normalise both
+            # the options and the gold key so the reward can compare letters.
+            if gold not in LETTERS:
+                if gold not in labels:
+                    continue
+                gold = LETTERS[labels.index(gold)]
+            elif gold not in labels:
+                continue
+            elif labels[0] not in LETTERS:
+                gold = LETTERS[labels.index(gold)]
+            opts = "\n".join(f"{LETTERS[i]}. {t}" for i, t in enumerate(texts))
+            if gold not in LETTERS[:len(texts)]:
+                continue
+            rows.append({
+                "question": f"{r['question']}\n\n{opts}",
+                "gold": gold,
+                "reasoning": f"The correct option is {gold}: "
+                             f"{texts[LETTERS.index(gold)]}",
+            })
+    return rows
+
+
+def build_grpo_dataset(task: str, n_rows: int) -> Dataset:
+    """Prompts in chat form plus the gold answer GRPO's reward will check."""
+    rows = [{"prompt": [{"role": "system", "content": SYSTEM_PROMPT},
+                        {"role": "user", "content": r["question"]}],
+             "answer": r["gold"]}
+            for r in load_task_rows(task, n_rows)]
+    print(f"[grpo-data] {task}: {len(rows)} prompts")
     return Dataset.from_list(rows)
 
 
-def build_sft_dataset(tokenizer, n_rows: int):
+def build_sft_dataset(tokenizer, task: str, n_rows: int):
     """GSM8K worked solutions, rewritten into the exact target format.
 
     This is the cold start. The model is shown the shape it will later be
     rewarded for producing, using reasoning humans already wrote, so GRPO has a
     behaviour to amplify rather than one to invent.
     """
-    ds = load_gsm8k("train", n_rows)
     texts = []
-    for r in ds:
-        gold = extract_hash_answer(r["answer"])
-        if gold is None:
-            continue
-        target = XML_COT_FORMAT.format(reasoning=clean_solution(r["answer"]),
-                                       answer=gold)
+    for r in load_task_rows(task, n_rows):
+        target = XML_COT_FORMAT.format(reasoning=r["reasoning"], answer=r["gold"])
         prompt = tokenizer.apply_chat_template(
             [{"role": "system", "content": SYSTEM_PROMPT},
              {"role": "user", "content": r["question"]}],
@@ -630,6 +693,8 @@ def reward_trajectory(trainer) -> dict:
 def main() -> None:
     ap = argparse.ArgumentParser(description="SFT cold start, then GRPO on GSM8K")
     ap.add_argument("--base", default=BASE_MODEL)
+    ap.add_argument("--task", default="arc", choices=sorted(TASKS),
+                    help="; ".join(f"{k}: {v['blurb']}" for k, v in TASKS.items()))
     ap.add_argument("--sft-steps", type=int, default=300)
     ap.add_argument("--grpo-steps", type=int, default=150)
     ap.add_argument("--sft-rows", type=int, default=4000)
@@ -662,7 +727,11 @@ def main() -> None:
     random.seed(SEED)
     torch.manual_seed(SEED)
     OUT.mkdir(parents=True, exist_ok=True)
-    report: dict = {"order": "SFT -> GRPO", "base": args.base,
+    global ANSWER_KIND
+    ANSWER_KIND = TASKS[args.task]["answer_kind"]
+    print(f"[task] {args.task} -- {TASKS[args.task]['blurb']}")
+
+    report: dict = {"order": "SFT -> GRPO", "base": args.base, "task": args.task,
                     "num_generations": args.num_generations,
                     "temperature": args.temperature, "beta": args.beta,
                     "skip_sft": args.skip_sft}
@@ -670,7 +739,7 @@ def main() -> None:
     # ---------------------------------------------------------------- stage 0
     banner("STAGE 0 -- baseline")
     model, tokenizer = load_model(args.base, args.load_in_4bit)
-    grpo_ds = build_grpo_dataset(args.grpo_rows)
+    grpo_ds = build_grpo_dataset(args.task, args.grpo_rows)
 
     report["audit_base"] = reward_audit(
         model, tokenizer, grpo_ds, n_prompts=args.audit_prompts,
@@ -686,7 +755,7 @@ def main() -> None:
         grpo_base = args.base
     else:
         banner("STAGE 1 -- SFT cold start (teach the format GRPO will reward)")
-        sft_train, sft_eval = build_sft_dataset(tokenizer, args.sft_rows)
+        sft_train, sft_eval = build_sft_dataset(tokenizer, args.task, args.sft_rows)
         model = attach_lora(model, rank=16)
         model.print_trainable_parameters()
         enable_training(model)
