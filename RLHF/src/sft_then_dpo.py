@@ -203,6 +203,56 @@ def show_examples(label: str, texts: list[str], n: int = 2, width: int = 700) ->
     print("  " + "-" * 68)
 
 
+def warn_if_overfit(trainer, label: str) -> dict:
+    """Compare first and last eval_loss; a rise means the stage memorised."""
+    evals = [e["eval_loss"] for e in trainer.state.log_history if "eval_loss" in e]
+    if len(evals) < 2:
+        return {}
+    first, best, last = evals[0], min(evals), evals[-1]
+    print(f"[fit {label}] eval_loss {first:.3f} -> {last:.3f} (best {best:.3f})")
+    if last > first:
+        print(f"  WARNING: eval loss ROSE by {last - first:.3f}. This stage "
+              f"overfit -- train loss fell while held-out loss climbed.")
+    return {"eval_first": first, "eval_best": best, "eval_last": last}
+
+
+def verify_merged(path, texts: list[str], expected: float, label: str,
+                  fatal: bool = False) -> dict:
+    """Reload the merged checkpoint and re-measure perplexity on it.
+
+    Everything above this point is measured on the live PEFT model. The merged
+    directory is what stage 2 loads and what people download, and until it is
+    read back nothing has checked it. In the CPT scripts that blind spot hid a
+    102x regression behind a summary that looked healthy.
+
+    This script's LoRA never touches embed_tokens or lm_head, so it is not
+    exposed to the tied-weight merge failure -- but "not exposed to the one we
+    found" is not the same as verified.
+    """
+    try:
+        merged, tok = load_model(str(path), False)
+        got = perplexity(merged, tok, texts)
+        ratio = got / max(1e-9, expected)
+        print(f"[merge-check {label}] adapter ppl={expected:.2f}  "
+              f"merged ppl={got:.2f}  (x{ratio:.2f})")
+        if ratio > 1.5:
+            print(f"  WARNING: the merged checkpoint at {path} scores {ratio:.1f}x "
+                  f"worse than the adapter it came from -- do not publish it.")
+            if fatal:
+                raise SystemExit(
+                    "\n[abort] Stage 2 trains on this file, so continuing would "
+                    "spend the whole stage on a broken base.\n"
+                    "         Pass --allow-bad-merge to continue anyway.")
+        del merged
+        torch.cuda.empty_cache()
+        return {"adapter_ppl": expected, "merged_ppl": got, "ratio": ratio}
+    except SystemExit:
+        raise
+    except Exception as exc:
+        print(f"[merge-check {label}] could not verify ({type(exc).__name__}: {exc})")
+        return {}
+
+
 def enable_training(model) -> None:
     """`FastLanguageModel.for_training` with the probe-then-train crash guarded.
 
@@ -622,9 +672,16 @@ def make_sft_trainer(model, tokenizer, train_ds, eval_ds, *, out_dir: Path,
         report_to="none",
         fp16=not bf16_ok(),
         bf16=bf16_ok(),
-        save_strategy="no",
         eval_strategy="steps",
         eval_steps=max(10, (max_steps or 200) // 5),
+        # Ship the checkpoint with the lowest held-out loss rather than
+        # whichever one the last step happened to produce.
+        save_strategy="steps",
+        save_steps=max(10, (max_steps or 200) // 5),
+        save_total_limit=2,
+        load_best_model_at_end=True,
+        metric_for_best_model="eval_loss",
+        greater_is_better=False,
         per_device_eval_batch_size=batch,
         dataset_text_field="text",
         max_seq_length=MAX_SEQ_LEN,
@@ -737,9 +794,16 @@ def make_dpo_trainer(model, tokenizer, train_ds, eval_ds, *, out_dir: Path,
         report_to="none",
         fp16=not bf16_ok(),
         bf16=bf16_ok(),
-        save_strategy="no",
         eval_strategy="steps",
         eval_steps=max(10, (max_steps or 200) // 5),
+        # Ship the checkpoint with the lowest held-out loss rather than
+        # whichever one the last step happened to produce.
+        save_strategy="steps",
+        save_steps=max(10, (max_steps or 200) // 5),
+        save_total_limit=2,
+        load_best_model_at_end=True,
+        metric_for_best_model="eval_loss",
+        greater_is_better=False,
         per_device_eval_batch_size=batch,
         max_length=MAX_SEQ_LEN,
         max_prompt_length=MAX_PROMPT_LEN,
@@ -951,6 +1015,9 @@ def main() -> None:
     ap.add_argument("--accum", type=int, default=4)
     # 4-bit is the default, as in the class notebooks: it is what fits a T4
     # comfortably and what these hyperparameters were tuned against.
+    ap.add_argument("--allow-bad-merge", action="store_true",
+                    help="continue past a failed stage-1 merge check instead "
+                         "of aborting; the DPO result will be meaningless")
     ap.add_argument("--no-4bit", dest="load_in_4bit", action="store_false",
                     default=True, help="load in fp16/bf16 instead of 4-bit")
     ap.add_argument("--smoke", action="store_true", help="tiny run to check wiring")
@@ -1007,6 +1074,7 @@ def main() -> None:
     trainer = mask_prompt_tokens(trainer)
     show_masking(trainer, tokenizer)
     report["sft_train_loss"] = trainer.train().training_loss
+    report["fit_sft"] = warn_if_overfit(trainer, "sft")
 
     report["ppl_after_sft"] = perplexity(model, tokenizer, general_eval)
     report["pref_acc_after_sft"] = preference_accuracy(model, tokenizer, pref_eval_raw)
@@ -1017,6 +1085,10 @@ def main() -> None:
     tokenizer.save_pretrained(str(SFT_ADAPTER))
     banner("merging SFT adapter -- this becomes the DPO reference model")
     model.save_pretrained_merged(str(SFT_MERGED), tokenizer, save_method="merged_16bit")
+    # DPO trains on THIS file and anchors its KL leash to it.
+    report["merge_check_stage1"] = verify_merged(
+        SFT_MERGED, general_eval, report["ppl_after_sft"], "sft-intermediate",
+        fatal=not args.allow_bad_merge)
 
     if args.push_to_hub and args.push_adapters:
         repo = resolve_repo(args.push_to_hub, "-stage1-sft-lora")
@@ -1042,6 +1114,7 @@ def main() -> None:
         warmup=min(30, max(5, args.dpo_steps // 10)),
     )
     report["dpo_train_loss"] = trainer.train().training_loss
+    report["fit_dpo"] = warn_if_overfit(trainer, "dpo")
 
     # Final DPO log line carries rewards/accuracies and rewards/margins; keep
     # them in the report so the run can be judged without the console scrollback.
@@ -1062,6 +1135,8 @@ def main() -> None:
     tokenizer.save_pretrained(str(DPO_ADAPTER))
     banner("merging DPO adapter -> deployable single-checkpoint model")
     model.save_pretrained_merged(str(FINAL_MERGED), tokenizer, save_method="merged_16bit")
+    report["merge_check"] = verify_merged(
+        FINAL_MERGED, general_eval, report["ppl_after_dpo"], "final")
 
     if args.push_to_hub:
         repo = resolve_repo(args.push_to_hub)
