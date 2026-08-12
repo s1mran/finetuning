@@ -101,8 +101,13 @@ a loss curve and obvious in the strings.
 
 ## Usage
 
-Easiest path is [`run_in_colab.ipynb`](run_in_colab.ipynb) — setup, runs, and a
-comparison cell, one step at a time. Otherwise:
+Two notebooks:
+
+- [`run_medical.ipynb`](run_medical.ipynb) — the medical ordering pair plus the
+  RLHF run, ~65 min end to end, with result-reading and publish cells.
+- [`run_in_colab.ipynb`](run_in_colab.ipynb) — all five experiments.
+
+Otherwise:
 
 ```bash
 pip install unsloth trl peft transformers datasets accelerate bitsandbytes
