@@ -615,8 +615,21 @@ def resolve_cpt_targets(model, targets: list[str], freeze_embeddings: bool = Fal
 
 
 def attach_lora(model, *, rank: int, targets: list[str]):
-    return FastLanguageModel.get_peft_model(
-        model,
+    """Attach LoRA, asking peft to keep tied weights tied through the merge.
+
+    When `embed_tokens` is adapted on a model with `tie_word_embeddings=True`,
+    peft prints:
+
+        a tied layer is part of the adapter, but `ensure_weight_tying` is not
+        set to True. This can lead to complications, for example when merging
+
+    That warning is not cosmetic. Ignoring it produced a stage-1 checkpoint
+    measuring 1378 perplexity from an adapter measuring 13.45 -- a 102x
+    regression, because the merge writes the adapted embedding without keeping
+    the output head consistent with it. Set the flag when it applies, and fall
+    back cleanly on peft versions that predate it.
+    """
+    kwargs = dict(
         r=rank,
         lora_alpha=rank,             # alpha == r  =>  scaling factor of 1
         lora_dropout=0,              # Unsloth has a fast path for dropout=0
@@ -626,6 +639,19 @@ def attach_lora(model, *, rank: int, targets: list[str]):
         random_state=SEED,
         use_rslora=False,
     )
+    touches_tied = any(t in targets for t in ("embed_tokens", "lm_head"))
+    if touches_tied and getattr(
+            getattr(model, "config", None), "tie_word_embeddings", False):
+        try:
+            out = FastLanguageModel.get_peft_model(
+                model, ensure_weight_tying=True, **kwargs)
+            print("[lora] ensure_weight_tying=True (tied embeddings stay tied "
+                  "through the merge)")
+            return out
+        except TypeError as exc:
+            print(f"[lora] ensure_weight_tying unsupported by this peft/unsloth "
+                  f"({exc}); the stage-1 merge check will catch the fallout")
+    return FastLanguageModel.get_peft_model(model, **kwargs)
 
 
 # ----------------------------------------------------------------------------
