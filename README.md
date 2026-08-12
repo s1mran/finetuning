@@ -130,6 +130,8 @@ a loss curve and obvious in the strings.
 
 Two notebooks:
 
+- [`run_rlhf.ipynb`](run_rlhf.ipynb) — SFT then DPO, with the
+  reward-hacking guards and how to read them.
 - [`run_rlvr.ipynb`](run_rlvr.ipynb) — GRPO with the cold start, the
   reward-variance gate, and the failure reproduced on purpose.
 - [`medical_cpt_sft.ipynb`](medical_cpt_sft.ipynb) — the medical ordering pair,
