@@ -195,6 +195,41 @@ def show_examples(label: str, texts: list[str], n: int = 2, width: int = 700) ->
     print("  " + "-" * 68)
 
 
+def save_merged(model, tokenizer, path) -> None:
+    """Collapse the adapter into the base weights and write one checkpoint.
+
+    Unsloth's fast merge maps LoRA stats onto tensors by NAME, and on some
+    architectures it pairs the wrong ones: on Qwen2.5-1.5B it tried to add a
+    [1536, 1536] product into a [1536, 8960] MLP tensor and raised
+
+        RuntimeError: Bad in-place call: input tensor size [1536, 1536] and
+        output tensor size [1536, 8960] should match
+
+    peft's own merge walks the module tree instead, so it cannot mismatch a
+    projection with an MLP. It is slower and wants the weights unquantised,
+    which is the trade -- if it also fails, re-run with --no-4bit.
+    """
+    try:
+        model.save_pretrained_merged(str(path), tokenizer,
+                                     save_method="merged_16bit")
+        return
+    except Exception as exc:
+        print(f"[merge] unsloth fast merge failed "
+              f"({type(exc).__name__}: {str(exc)[:160]})")
+        print("[merge] falling back to peft merge_and_unload")
+    try:
+        merged = model.merge_and_unload()
+        merged.save_pretrained(str(path), safe_serialization=True)
+        tokenizer.save_pretrained(str(path))
+        print(f"[merge] wrote {path} via peft")
+    except Exception as exc:
+        raise SystemExit(
+            f"\n[abort] both merge paths failed at {path}.\n"
+            f"        peft said: {type(exc).__name__}: {str(exc)[:200]}\n"
+            f"        merge_and_unload needs unquantised weights -- re-run with "
+            f"--no-4bit.") from exc
+
+
 def enable_training(model) -> None:
     """`for_training` with the probe-then-train crash guarded.
 
@@ -774,8 +809,7 @@ def main() -> None:
         model.save_pretrained(str(SFT_ADAPTER))
         tokenizer.save_pretrained(str(SFT_ADAPTER))
         banner("merging the cold-start adapter -- GRPO's starting policy and reference")
-        model.save_pretrained_merged(str(SFT_MERGED), tokenizer,
-                                     save_method="merged_16bit")
+        save_merged(model, tokenizer, SFT_MERGED)
         grpo_base = str(SFT_MERGED)
 
         del model, trainer
@@ -809,8 +843,7 @@ def main() -> None:
     model.save_pretrained(str(GRPO_ADAPTER))
     tokenizer.save_pretrained(str(GRPO_ADAPTER))
     banner("merging GRPO adapter -> deployable single checkpoint")
-    model.save_pretrained_merged(str(FINAL_MERGED), tokenizer,
-                                 save_method="merged_16bit")
+    save_merged(model, tokenizer, FINAL_MERGED)
 
     if args.push_to_hub:
         target = args.push_to_hub

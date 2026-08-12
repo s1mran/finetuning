@@ -554,6 +554,41 @@ def verify_merged(path, texts: list[str], expected: float, label: str,
         return {}
 
 
+def save_merged(model, tokenizer, path) -> None:
+    """Collapse the adapter into the base weights and write one checkpoint.
+
+    Unsloth's fast merge maps LoRA stats onto tensors by NAME, and on some
+    architectures it pairs the wrong ones: on Qwen2.5-1.5B it tried to add a
+    [1536, 1536] product into a [1536, 8960] MLP tensor and raised
+
+        RuntimeError: Bad in-place call: input tensor size [1536, 1536] and
+        output tensor size [1536, 8960] should match
+
+    peft's own merge walks the module tree instead, so it cannot mismatch a
+    projection with an MLP. It is slower and wants the weights unquantised,
+    which is the trade -- if it also fails, re-run with --no-4bit.
+    """
+    try:
+        model.save_pretrained_merged(str(path), tokenizer,
+                                     save_method="merged_16bit")
+        return
+    except Exception as exc:
+        print(f"[merge] unsloth fast merge failed "
+              f"({type(exc).__name__}: {str(exc)[:160]})")
+        print("[merge] falling back to peft merge_and_unload")
+    try:
+        merged = model.merge_and_unload()
+        merged.save_pretrained(str(path), safe_serialization=True)
+        tokenizer.save_pretrained(str(path))
+        print(f"[merge] wrote {path} via peft")
+    except Exception as exc:
+        raise SystemExit(
+            f"\n[abort] both merge paths failed at {path}.\n"
+            f"        peft said: {type(exc).__name__}: {str(exc)[:200]}\n"
+            f"        merge_and_unload needs unquantised weights -- re-run with "
+            f"--no-4bit.") from exc
+
+
 def enable_training(model) -> None:
     """`FastLanguageModel.for_training` with the probe-then-train crash guarded.
 
@@ -920,8 +955,7 @@ def main() -> None:
     model.save_pretrained(str(CPT_ADAPTER))
     tokenizer.save_pretrained(str(CPT_ADAPTER))
     banner("merging CPT adapter into the base weights")
-    model.save_pretrained_merged(str(CPT_MERGED), tokenizer,
-                                 save_method="merged_16bit")
+    save_merged(model, tokenizer, CPT_MERGED)
     # Stage 2 trains on THIS file, not on the model still in memory.
     report["merge_check_stage1"] = verify_merged(
         CPT_MERGED, domain_eval_raw,
@@ -978,8 +1012,7 @@ def main() -> None:
     model.save_pretrained(str(SFT_ADAPTER))
     tokenizer.save_pretrained(str(SFT_ADAPTER))
     banner("merging SFT adapter -> deployable single-checkpoint model")
-    model.save_pretrained_merged(str(FINAL_MERGED), tokenizer,
-                                 save_method="merged_16bit")
+    save_merged(model, tokenizer, FINAL_MERGED)
     report["merge_check"] = verify_merged(
         FINAL_MERGED, domain_eval_raw,
         report["ppl_after_sft"]["domain"], "final")
