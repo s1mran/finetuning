@@ -755,6 +755,9 @@ def main() -> None:
     ap.add_argument("--accum", type=int, default=4)
     ap.add_argument("--skip-sft", action="store_true",
                     help="GRPO straight off the base model -- the documented failure")
+    ap.add_argument("--resume-from-sft", action="store_true",
+                    help="skip cold-start training and reuse the adapter already "
+                         "in reports/, e.g. after a merge failure")
     ap.add_argument("--force-grpo", action="store_true",
                     help="train even when the audit finds zero reward variance")
     ap.add_argument("--no-4bit", dest="load_in_4bit", action="store_false", default=True)
@@ -797,6 +800,35 @@ def main() -> None:
               "configuration the demo notebooks use and it is expected to "
               "produce a flat reward curve.")
         grpo_base = args.base
+    elif args.resume_from_sft:
+        # The cold start is the expensive half and it is saved before the merge
+        # is attempted, so a merge failure should not cost it. Unsloth reads
+        # adapter_config.json and pulls the base itself, which also means the
+        # adapter can be re-merged at a precision it did not train at.
+        banner("STAGE 1 -- REUSING the saved cold-start adapter")
+        if not (SFT_ADAPTER / "adapter_config.json").exists():
+            raise SystemExit(
+                f"\n[abort] --resume-from-sft needs an adapter at {SFT_ADAPTER}\n"
+                f"        and there is none. Run without the flag to train one.")
+        print(f"loading {SFT_ADAPTER}")
+        if not args.load_in_4bit:
+            print("re-merging in fp16: the adapter trained against 4-bit weights, "
+                  "so expect small numerical differences.")
+        del model
+        torch.cuda.empty_cache()
+        model, tokenizer = load_model(str(SFT_ADAPTER), args.load_in_4bit)
+
+        report["audit_after_sft"] = reward_audit(
+            model, tokenizer, grpo_ds, n_prompts=args.audit_prompts,
+            n_gens=args.num_generations, temperature=args.temperature,
+            label="the reused cold-start adapter")
+
+        banner("merging the cold-start adapter -- GRPO's starting policy and reference")
+        save_merged(model, tokenizer, SFT_MERGED)
+        grpo_base = str(SFT_MERGED)
+
+        del model
+        torch.cuda.empty_cache()
     else:
         banner("STAGE 1 -- SFT cold start (teach the format GRPO will reward)")
         sft_train, sft_eval = build_sft_dataset(tokenizer, args.task, args.sft_rows)
