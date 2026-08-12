@@ -370,7 +370,7 @@ def clean_solution(answer: str) -> str:
 LETTERS = "ABCDE"
 
 
-def load_task_rows(task: str, n_rows: int) -> list[dict]:
+def load_task_rows(task: str, n_rows: int, split: str = "train") -> list[dict]:
     """Normalise whichever task to {question, gold, reasoning}.
 
     `reasoning` is what the cold start imitates. GSM8K ships human worked
@@ -379,7 +379,7 @@ def load_task_rows(task: str, n_rows: int) -> list[dict]:
     and the reasoning content is what GRPO is then supposed to improve.
     """
     repo, config = TASKS[task]["repo"]
-    ds = load_dataset(repo, config, split="train")
+    ds = load_dataset(repo, config, split=split)
     ds = ds.shuffle(seed=SEED).select(range(min(n_rows, len(ds))))
 
     rows = []
@@ -416,14 +416,33 @@ def load_task_rows(task: str, n_rows: int) -> list[dict]:
     return rows
 
 
+def _as_prompt_rows(rows: list[dict]) -> Dataset:
+    return Dataset.from_list([
+        {"prompt": [{"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": r["question"]}],
+         "answer": r["gold"]}
+        for r in rows])
+
+
 def build_grpo_dataset(task: str, n_rows: int) -> Dataset:
     """Prompts in chat form plus the gold answer GRPO's reward will check."""
-    rows = [{"prompt": [{"role": "system", "content": SYSTEM_PROMPT},
-                        {"role": "user", "content": r["question"]}],
-             "answer": r["gold"]}
-            for r in load_task_rows(task, n_rows)]
-    print(f"[grpo-data] {task}: {len(rows)} prompts")
-    return Dataset.from_list(rows)
+    ds = _as_prompt_rows(load_task_rows(task, n_rows, split="train"))
+    print(f"[grpo-data] {task}: {len(ds)} training prompts")
+    return ds
+
+
+def build_audit_dataset(task: str, n_rows: int) -> Dataset:
+    """A HELD-OUT set for the audits.
+
+    Auditing on the training prompts measures how well GRPO fitted the prompts
+    it just optimised against, which is not the question. It is also the
+    flattering direction: correctness on seen prompts rises partly by
+    memorisation. The test split costs nothing extra and makes the before/after
+    numbers mean what the summary claims they mean.
+    """
+    ds = _as_prompt_rows(load_task_rows(task, n_rows, split="test"))
+    print(f"[audit-data] {task}: {len(ds)} held-out prompts")
+    return ds
 
 
 def build_sft_dataset(tokenizer, task: str, n_rows: int):
@@ -761,7 +780,10 @@ def main() -> None:
     ap.add_argument("--beta", type=float, default=0.04, help="KL leash to the reference")
     ap.add_argument("--sft-lr", type=float, default=2e-4)
     ap.add_argument("--grpo-lr", type=float, default=5e-6)
-    ap.add_argument("--audit-prompts", type=int, default=8)
+    ap.add_argument("--audit-prompts", type=int, default=16,
+                    help="held-out prompts per audit; each is sampled "
+                         "--num-generations times, so this sets the sample size "
+                         "the before/after correctness numbers rest on")
     ap.add_argument("--batch", type=int, default=1)
     ap.add_argument("--accum", type=int, default=4)
     ap.add_argument("--skip-sft", action="store_true",
@@ -801,9 +823,10 @@ def main() -> None:
     banner("STAGE 0 -- baseline")
     model, tokenizer = load_model(args.base, args.load_in_4bit)
     grpo_ds = build_grpo_dataset(args.task, args.grpo_rows)
+    audit_ds = build_audit_dataset(args.task, max(200, args.audit_prompts * 4))
 
     report["audit_base"] = reward_audit(
-        model, tokenizer, grpo_ds, n_prompts=args.audit_prompts,
+        model, tokenizer, audit_ds, n_prompts=args.audit_prompts,
         n_gens=args.num_generations, temperature=args.temperature,
         label="base model, before any training")
 
@@ -833,7 +856,7 @@ def main() -> None:
         model, tokenizer = load_model(str(SFT_ADAPTER), args.load_in_4bit)
 
         report["audit_after_sft"] = reward_audit(
-            model, tokenizer, grpo_ds, n_prompts=args.audit_prompts,
+            model, tokenizer, audit_ds, n_prompts=args.audit_prompts,
             n_gens=args.num_generations, temperature=args.temperature,
             label="the reused cold-start adapter")
 
@@ -857,7 +880,7 @@ def main() -> None:
         report["sft_train_loss"] = trainer.train().training_loss
 
         report["audit_after_sft"] = reward_audit(
-            model, tokenizer, grpo_ds, n_prompts=args.audit_prompts,
+            model, tokenizer, audit_ds, n_prompts=args.audit_prompts,
             n_gens=args.num_generations, temperature=args.temperature,
             label="after the SFT cold start")
 
@@ -890,7 +913,7 @@ def main() -> None:
     report["grpo_trajectory"] = reward_trajectory(trainer)
 
     report["audit_after_grpo"] = reward_audit(
-        model, tokenizer, grpo_ds, n_prompts=args.audit_prompts,
+        model, tokenizer, audit_ds, n_prompts=args.audit_prompts,
         n_gens=args.num_generations, temperature=args.temperature,
         label="after GRPO")
 
