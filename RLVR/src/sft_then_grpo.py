@@ -100,7 +100,12 @@ from datasets import Dataset, load_dataset
 BASE_MODEL = "HuggingFaceTB/SmolLM-135M"
 MAX_SEQ_LEN = 1024
 MAX_PROMPT_LEN = 256
-MAX_COMPLETION_LEN = 200
+# Set per task in main(). Generation dominates GRPO's wall clock -- every step
+# samples G completions and waits for all of them -- so a cap sized for the
+# longest task makes the short one pay for length it never uses. An ARC answer
+# in this format is about 30 tokens; capping at 200 spent most of each step
+# generating padding.
+MAX_COMPLETION_LEN = 128
 SEED = 3407
 
 # The task decides whether GRPO can learn at all, more than any hyperparameter.
@@ -116,11 +121,13 @@ TASKS = {
     "arc": {
         "repo": ("allenai/ai2_arc", "ARC-Easy"),
         "answer_kind": "letter",
+        "max_completion": 96,     # a formatted answer is ~30 tokens
         "blurb": "ARC-Easy, 4-way multiple choice (~25% by chance)",
     },
     "gsm8k": {
         "repo": ("openai/gsm8k", "main"),
         "answer_kind": "digit",
+        "max_completion": 256,    # worked arithmetic needs the room
         "blurb": "GSM8K grade-school word problems (~0% by chance below ~1.5B)",
     },
 }
@@ -747,6 +754,10 @@ def main() -> None:
                     help="G: completions per prompt; the group the baseline comes from")
     ap.add_argument("--temperature", type=float, default=1.0,
                     help="higher explores more, which is what creates reward variance")
+    ap.add_argument("--max-completion-length", type=int, default=None,
+                    help="token cap per generation; defaults per task. This is "
+                         "the biggest lever on GRPO wall-clock, since every step "
+                         "waits on G generations")
     ap.add_argument("--beta", type=float, default=0.04, help="KL leash to the reference")
     ap.add_argument("--sft-lr", type=float, default=2e-4)
     ap.add_argument("--grpo-lr", type=float, default=5e-6)
@@ -774,8 +785,11 @@ def main() -> None:
     random.seed(SEED)
     torch.manual_seed(SEED)
     OUT.mkdir(parents=True, exist_ok=True)
-    global ANSWER_KIND
+    global ANSWER_KIND, MAX_COMPLETION_LEN
     ANSWER_KIND = TASKS[args.task]["answer_kind"]
+    MAX_COMPLETION_LEN = (args.max_completion_length
+                          or TASKS[args.task]["max_completion"])
+    print(f"[gen] max_completion_length={MAX_COMPLETION_LEN}")
     print(f"[task] {args.task} -- {TASKS[args.task]['blurb']}")
 
     report: dict = {"order": "SFT -> GRPO", "base": args.base, "task": args.task,
