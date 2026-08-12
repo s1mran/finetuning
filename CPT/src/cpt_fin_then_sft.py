@@ -518,7 +518,8 @@ def warn_if_overfit(trainer, label: str) -> dict:
     return {"eval_first": first, "eval_best": best, "eval_last": last}
 
 
-def verify_merged(path, texts: list[str], expected: float, label: str) -> dict:
+def verify_merged(path, texts: list[str], expected: float, label: str,
+                  fatal: bool = False) -> dict:
     """Reload the merged checkpoint and re-measure perplexity on it.
 
     Every number printed above this point came from the live PEFT model in
@@ -537,6 +538,14 @@ def verify_merged(path, texts: list[str], expected: float, label: str) -> dict:
             print(f"  WARNING: the merged checkpoint at {path} scores {ratio:.1f}x "
                   f"worse than the adapter it came from. The merge lost "
                   f"something -- do not publish this checkpoint.")
+            if fatal:
+                raise SystemExit(
+                    f"\n[abort] Stage 2 trains on this file, so continuing would "
+                    f"spend the whole stage on a broken base and produce a\n"
+                    f"         meaningless result. Re-run with --freeze-embeddings, "
+                    f"which keeps embed_tokens out of the CPT adapter so the\n"
+                    f"         merge is pure LoRA on attention and MLP. Pass "
+                    f"--allow-bad-merge to continue anyway.")
         del merged
         torch.cuda.empty_cache()
         return {"adapter_ppl": expected, "merged_ppl": got, "ratio": ratio}
@@ -801,6 +810,9 @@ def main() -> None:
                     help="fraction of SFT rows rendered without an ### Input block")
     ap.add_argument("--batch", type=int, default=8)
     ap.add_argument("--accum", type=int, default=4)
+    ap.add_argument("--allow-bad-merge", action="store_true",
+                    help="continue past a failed stage-1 merge check instead "
+                         "of aborting; the stage-2 result will be meaningless")
     ap.add_argument("--freeze-embeddings", action="store_true",
                     help="exclude embed_tokens from the CPT LoRA targets; use "
                          "when the stage-1 merge check reports a degraded "
@@ -887,7 +899,8 @@ def main() -> None:
     # Stage 2 trains on THIS file, not on the model still in memory.
     report["merge_check_stage1"] = verify_merged(
         CPT_MERGED, domain_eval_raw,
-        report["ppl_after_cpt"]["domain"], "cpt-intermediate")
+        report["ppl_after_cpt"]["domain"], "cpt-intermediate",
+        fatal=not args.allow_bad_merge)
 
     if args.push_to_hub and args.push_adapters:
         push_adapter(model, tokenizer,
