@@ -1,0 +1,77 @@
+{
+  "order": "SFT -> GRPO",
+  "base": "HuggingFaceTB/SmolLM-135M",
+  "task": "arc",
+  "num_generations": 4,
+  "temperature": 1.0,
+  "beta": 0.04,
+  "skip_sft": false,
+  "audit_base": {
+    "mean_total_reward": 0.0,
+    "max_total_reward": 0.0,
+    "mean_group_std": 0.0,
+    "nonzero_rate": 0.0,
+    "fired": {
+      "xmlcount_reward": 0.0,
+      "soft_format_reward": 0.0,
+      "strict_format_reward": 0.0,
+      "shape_reward": 0.0,
+      "correctness_reward": 0.0
+    },
+    "mean_by_func": {
+      "xmlcount_reward": 0.0,
+      "soft_format_reward": 0.0,
+      "strict_format_reward": 0.0,
+      "shape_reward": 0.0,
+      "correctness_reward": 0.0
+    }
+  },
+  "sft_train_loss": 0.9768122784296671,
+  "audit_after_sft": {
+    "mean_total_reward": 2.5,
+    "max_total_reward": 4.0,
+    "mean_group_std": 0.6830127018922193,
+    "nonzero_rate": 1.0,
+    "fired": {
+      "xmlcount_reward": 1.0,
+      "soft_format_reward": 1.0,
+      "strict_format_reward": 1.0,
+      "shape_reward": 1.0,
+      "correctness_reward": 0.25
+    },
+    "mean_by_func": {
+      "xmlcount_reward": 0.5,
+      "soft_format_reward": 0.5,
+      "strict_format_reward": 0.5,
+      "shape_reward": 0.5,
+      "correctness_reward": 0.5
+    }
+  },
+  "grpo_train_loss": 6.521198742722353e-07,
+  "grpo_trajectory": {
+    "reward_first_half": 2.294793332417806,
+    "reward_last_half": 2.300150000254313,
+    "reward_std_mean": 0.8614721469084422,
+    "reward_std_max": 2.016533136367798
+  },
+  "audit_after_grpo": {
+    "mean_total_reward": 2.4375,
+    "max_total_reward": 4.0,
+    "mean_group_std": 0.6565872849329517,
+    "nonzero_rate": 1.0,
+    "fired": {
+      "xmlcount_reward": 0.84375,
+      "soft_format_reward": 1.0,
+      "strict_format_reward": 0.90625,
+      "shape_reward": 1.0,
+      "correctness_reward": 0.28125
+    },
+    "mean_by_func": {
+      "xmlcount_reward": 0.421875,
+      "soft_format_reward": 0.5,
+      "strict_format_reward": 0.453125,
+      "shape_reward": 0.5,
+      "correctness_reward": 0.5625
+    }
+  }
+}
