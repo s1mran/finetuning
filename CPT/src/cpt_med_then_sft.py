@@ -587,11 +587,20 @@ def save_merged(model, tokenizer, path) -> None:
         tokenizer.save_pretrained(str(path))
         print(f"[merge] wrote {path} via peft")
     except Exception as exc:
+        quantised = getattr(getattr(model, "config", None), "quantization_config", None)
+        detail = str(exc).strip() or type(exc).__name__
+        hint = (
+            "        The model is loaded in 4-bit. peft can fold the adapter into\n"
+            "        quantised weights, but transformers cannot serialise a 4-bit\n"
+            "        model, so the save is what fails -- not the merge.\n"
+            "        Re-run with --no-4bit; this model in fp16 fits a T4.\n"
+            if quantised is not None else
+            "        Neither merge path could write this checkpoint. --no-4bit is\n"
+            "        worth trying; it is the path with the fewest special cases.\n")
         raise SystemExit(
-            f"\n[abort] both merge paths failed at {path}.\n"
-            f"        peft said: {type(exc).__name__}: {str(exc)[:200]}\n"
-            f"        merge_and_unload needs unquantised weights -- re-run with "
-            f"--no-4bit.") from exc
+            f"\n[abort] could not write a merged checkpoint at {path}.\n"
+            f"        peft raised {type(exc).__name__}: {detail[:200]}\n"
+            + hint) from exc
 
 
 def enable_training(model) -> None:
