@@ -1,77 +1,77 @@
 {
   "order": "SFT -> GRPO",
-  "base": "HuggingFaceTB/SmolLM-135M",
-  "task": "arc",
+  "base": "unsloth/Qwen2.5-1.5B-Instruct",
+  "task": "gsm8k",
   "num_generations": 4,
   "temperature": 1.0,
   "beta": 0.04,
   "skip_sft": false,
   "audit_base": {
-    "mean_total_reward": 0.0,
-    "max_total_reward": 0.0,
-    "mean_group_std": 0.0,
-    "nonzero_rate": 0.0,
+    "mean_total_reward": 0.018250000000000002,
+    "max_total_reward": 0.375,
+    "mean_group_std": 0.03604830743252726,
+    "nonzero_rate": 0.0625,
     "fired": {
-      "xmlcount_reward": 0.0,
+      "xmlcount_reward": 0.0625,
       "soft_format_reward": 0.0,
       "strict_format_reward": 0.0,
       "shape_reward": 0.0,
       "correctness_reward": 0.0
     },
     "mean_by_func": {
-      "xmlcount_reward": 0.0,
+      "xmlcount_reward": 0.018250000000000002,
       "soft_format_reward": 0.0,
       "strict_format_reward": 0.0,
       "shape_reward": 0.0,
       "correctness_reward": 0.0
     }
   },
-  "sft_train_loss": 0.9768122784296671,
+  "sft_train_loss": 0.29535919030507407,
   "audit_after_sft": {
-    "mean_total_reward": 2.5,
+    "mean_total_reward": 3.203125,
     "max_total_reward": 4.0,
-    "mean_group_std": 0.6830127018922193,
+    "mean_group_std": 0.6239040164661389,
+    "nonzero_rate": 1.0,
+    "fired": {
+      "xmlcount_reward": 1.0,
+      "soft_format_reward": 1.0,
+      "strict_format_reward": 1.0,
+      "shape_reward": 0.90625,
+      "correctness_reward": 0.625
+    },
+    "mean_by_func": {
+      "xmlcount_reward": 0.5,
+      "soft_format_reward": 0.5,
+      "strict_format_reward": 0.5,
+      "shape_reward": 0.453125,
+      "correctness_reward": 1.25
+    }
+  },
+  "grpo_train_loss": 3.95804329400562e-07,
+  "grpo_trajectory": {
+    "reward_first_half": 2.7729166666666667,
+    "reward_last_half": 3.113541666666667,
+    "reward_std_mean": 0.6947267611821493,
+    "reward_std_max": 1.8607094287872314
+  },
+  "audit_after_grpo": {
+    "mean_total_reward": 3.625,
+    "max_total_reward": 4.0,
+    "mean_group_std": 0.4330127018922193,
     "nonzero_rate": 1.0,
     "fired": {
       "xmlcount_reward": 1.0,
       "soft_format_reward": 1.0,
       "strict_format_reward": 1.0,
       "shape_reward": 1.0,
-      "correctness_reward": 0.25
+      "correctness_reward": 0.8125
     },
     "mean_by_func": {
       "xmlcount_reward": 0.5,
       "soft_format_reward": 0.5,
       "strict_format_reward": 0.5,
       "shape_reward": 0.5,
-      "correctness_reward": 0.5
-    }
-  },
-  "grpo_train_loss": 6.521198742722353e-07,
-  "grpo_trajectory": {
-    "reward_first_half": 2.294793332417806,
-    "reward_last_half": 2.300150000254313,
-    "reward_std_mean": 0.8614721469084422,
-    "reward_std_max": 2.016533136367798
-  },
-  "audit_after_grpo": {
-    "mean_total_reward": 2.4375,
-    "max_total_reward": 4.0,
-    "mean_group_std": 0.6565872849329517,
-    "nonzero_rate": 1.0,
-    "fired": {
-      "xmlcount_reward": 0.84375,
-      "soft_format_reward": 1.0,
-      "strict_format_reward": 0.90625,
-      "shape_reward": 1.0,
-      "correctness_reward": 0.28125
-    },
-    "mean_by_func": {
-      "xmlcount_reward": 0.421875,
-      "soft_format_reward": 0.5,
-      "strict_format_reward": 0.453125,
-      "shape_reward": 0.5,
-      "correctness_reward": 0.5625
+      "correctness_reward": 1.625
     }
   }
 }
