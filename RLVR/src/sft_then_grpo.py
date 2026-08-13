@@ -86,6 +86,7 @@ import os
 import random
 import re
 import shutil
+import time
 import statistics
 from pathlib import Path
 
@@ -243,6 +244,26 @@ def save_merged(model, tokenizer, path) -> None:
             f"\n[abort] could not write a merged checkpoint at {path}.\n"
             f"        peft raised {type(exc).__name__}: {detail[:200]}\n"
             + hint) from exc
+
+
+def write_report(report: dict) -> Path:
+    """Write a uniquely named report, and refresh report.json alongside it.
+
+    A re-run used to overwrite report.json, so a two-minute smoke test could
+    erase the numbers from a forty-five minute run. The stamped file is the
+    archive -- one per run, never clobbered -- and report.json stays put as the
+    latest, since that is where the notebooks and every earlier command look.
+    """
+    OUT.mkdir(parents=True, exist_ok=True)
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    tag = "_".join(
+        str(report[k]).split("/")[-1].replace(" ", "")
+        for k in ("task", "base") if report.get(k))
+    body = json.dumps(report, indent=2)
+    stamped = OUT / f"report_{tag}_{stamp}.json" if tag else OUT / f"report_{stamp}.json"
+    stamped.write_text(body)
+    (OUT / "report.json").write_text(body)
+    return stamped
 
 
 def enable_training(model) -> None:
@@ -933,7 +954,7 @@ def main() -> None:
     if not args.keep_intermediate:
         shutil.rmtree(SFT_MERGED, ignore_errors=True)
 
-    (OUT / "report.json").write_text(json.dumps(report, indent=2))
+    report_file = write_report(report)
 
     # ---------------------------------------------------------------- summary
     banner("SUMMARY -- SFT cold start then GRPO")
@@ -954,7 +975,7 @@ def main() -> None:
     print("    group std ~0 anywhere  -> GRPO had no gradient at that point")
     print("    strict fmt rising      -> the cold start took; GRPO has a behaviour to amplify")
     print("    correct rising         -> reasoning is actually improving, not just formatting")
-    print(f"\n  report : {OUT / 'report.json'}")
+    print(f"\n  report : {report_file}")
     print(f"  model  : {FINAL_MERGED}")
 
 
