@@ -27,9 +27,8 @@ zero variance, zero gradient. The graduated rewards exist to break ties, but
 they cannot break a tie at zero: a model that never writes "<reasoning>" scores
 0.0 on tag-counting every single time.
 
-So this script does the thing the standard recipe does and the demo notebooks
-skip: **SFT the format in first**, from GSM8K's own worked solutions, then let
-GRPO amplify it. DeepSeek call this the cold start; R1-Zero (pure RL, no SFT)
+So this script does the thing it is tempting to skip: **SFT the format in
+first**, from the task's own worked solutions, then let GRPO amplify it. DeepSeek call this the cold start; R1-Zero (pure RL, no SFT)
 worked only because a 671B base model already produced the seed behaviour by
 chance.
 
@@ -833,9 +832,9 @@ def main() -> None:
     # ---------------------------------------------------------------- stage 1
     if args.skip_sft:
         banner("STAGE 1 -- SKIPPED (--skip-sft)")
-        print("Going straight to GRPO from the base model. This is the "
-              "configuration the demo notebooks use and it is expected to "
-              "produce a flat reward curve.")
+        print("Going straight to GRPO from the base model. Expect a flat "
+              "reward curve: with nothing to amplify, every group agrees with "
+              "itself and every update is zero.")
         grpo_base = args.base
     elif args.resume_from_sft:
         # The cold start is the expensive half and it is saved before the merge

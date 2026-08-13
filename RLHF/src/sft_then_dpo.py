@@ -1067,8 +1067,8 @@ def main() -> None:
     ap.add_argument("--dpo-lr", type=float, default=5e-6)
     ap.add_argument("--batch", type=int, default=4)
     ap.add_argument("--accum", type=int, default=4)
-    # 4-bit is the default, as in the class notebooks: it is what fits a T4
-    # comfortably and what these hyperparameters were tuned against.
+    # 4-bit by default: it is what fits a T4 comfortably and what the
+    # hyperparameters below were tuned against.
     ap.add_argument("--allow-bad-merge", action="store_true",
                     help="continue past a failed stage-1 merge check instead "
                          "of aborting; the DPO result will be meaningless")

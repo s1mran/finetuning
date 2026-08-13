@@ -180,13 +180,11 @@ api.upload_folder(folder_path="CPT/reports/cpt_fin_then_sft/04_final_merged",
 
 ## Design notes
 
-Configuration follows the class notebooks (`class_9a_f`, `class_9b`,
-`class_10a`): 4-bit loading, 512-token sequences, `HuggingFaceTB/SmolLM-135M`,
-cosine schedule, and `load_best_model_at_end` on `eval_loss` so a stage that
-starts overfitting ships its best checkpoint rather than its last.
+4-bit loading, 512-token sequences, `HuggingFaceTB/SmolLM-135M`, cosine
+schedule, and `load_best_model_at_end` on `eval_loss` so a stage that starts
+overfitting ships its best checkpoint rather than its last.
 
-Two things the notebooks got right that earlier versions of these scripts did
-not:
+Two decisions that cost me real runs before I made them:
 
 - **Split documents before chunking.** Chunking first and splitting after puts
   overlapping windows of the same filing on both sides of the split, so ~21% of

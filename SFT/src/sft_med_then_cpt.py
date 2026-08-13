@@ -933,8 +933,8 @@ def main() -> None:
                     help="exclude embed_tokens from the CPT LoRA targets; use "
                          "when the stage-1 merge check reports a degraded "
                          "intermediate checkpoint")
-    # 4-bit is the default, as in the class notebooks: it is what fits a T4
-    # comfortably and what these hyperparameters were tuned against.
+    # 4-bit by default: it is what fits a T4 comfortably and what the
+    # hyperparameters below were tuned against.
     ap.add_argument("--no-4bit", dest="load_in_4bit", action="store_false",
                     default=True, help="load in fp16/bf16 instead of 4-bit")
     ap.add_argument("--smoke", action="store_true", help="tiny run to check wiring")
